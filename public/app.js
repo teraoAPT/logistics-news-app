@@ -2,6 +2,7 @@ const CATEGORY_LABEL = {
   logistics: '物流',
   manufacturing: '製造業',
   topic: '注目トピック',
+  thailand: 'タイ市場',
 };
 
 let allItems = [];
@@ -64,7 +65,8 @@ function hubspotBadges(it) {
     .map((m) => {
       const cls = m.hasDeal ? 'hs-badge--deal' : 'hs-badge--lead';
       const label = m.hasDeal ? '取引データあり' : 'リード情報あり';
-      return `<span class="hs-badge ${cls}">${escapeHtml(m.name)}: ${label}</span>`;
+      const owner = m.ownerName ? ` ・ 担当:${escapeHtml(m.ownerName)}` : '';
+      return `<span class="hs-badge ${cls}">${escapeHtml(m.name)}: ${label}${owner}</span>`;
     })
     .join('');
 }
