@@ -1,52 +1,30 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>LOGI/MONO WATCH — 物流・製造業ニュース</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/style.css" />
-</head>
-<body>
+:root {
+  --bg: #ECEDE9;
+  --panel: #FFFFFF;
+  --ink: #1B1D1F;
+  --muted: #6B6F6A;
+  --hairline: #D6D8D2;
+  --hairline-strong: #B8BBB3;
+  --logistics: #2F5D82;
+  --logistics-bg: #E3ECF1;
+  --manufacturing: #B8500E;
+  --manufacturing-bg: #F5E4D6;
+  --topic: #9C7A00;
+  --topic-bg: #FBEEC7;
+  --safety-yellow: #E3A400;
+  --focus: #2F5D82;
+}
 
-<header class="topbar">
-  <div class="topbar__brand">
-    <span class="topbar__mark">▣</span>
-    <div>
-      <h1>LOGI<span class="slash">/</span>MONO <span class="watch">WATCH</span></h1>
-      <p class="topbar__sub">物流 &amp; 製造業 業界ニュース モニタリング</p>
-    </div>
-  </div>
-  <div class="topbar__meta">
-    <div class="clock" id="clock">--:--:--</div>
-    <button class="scan-btn" id="refreshBtn">
-      <span class="scan-btn__icon">↻</span> 再スキャン
-    </button>
-  </div>
-</header>
+* { box-sizing: border-box; }
 
-<div class="status-bar" id="statusBar">読み込み中...</div>
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Noto Sans JP', sans-serif;
+}
 
-<nav class="tabs" id="tabs">
-  <button class="tab is-active" data-filter="all">すべて</button>
-  <button class="tab" data-filter="logistics">物流</button>
-  <button class="tab" data-filter="manufacturing">製造業</button>
-  <button class="tab" data-filter="topic">注目トピック</button>
-</nav>
-
-<div class="tagbar" id="tagbar"></div>
-
-<main id="list" class="list">
-  <!-- 記事カードはJSで挿入 -->
-</main>
-
-<div class="empty" id="emptyState" hidden>該当するニュースが見つかりません。フィルタを変えてお試しください。</div>
-
-<footer class="footer">
-  <p>ソース: Googleニュース検索フィード + MONOist。5分ごとにキャッシュ更新。フィード構成は server.js の FEEDS 配列で編集できます。</p>
-</footer>
-
-<script src="/app.js"></script>
-</body>
-</html>
+body {
+  background-image:
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.015) 0px, rgba(0,0,0,0.015) 1px, transparent 1px,
