@@ -13,6 +13,8 @@
   --topic-bg: #FBEEC7;
   --safety-yellow: #E3A400;
   --focus: #2F5D82;
+  --paid: #8A2E2E;
+  --paid-bg: #F5E1E1;
 }
 
 * { box-sizing: border-box; }
@@ -230,6 +232,15 @@ a { color: inherit; }
 .card__category-label.manufacturing { color: var(--manufacturing); background: var(--manufacturing-bg); }
 .card__category-label.topic { color: var(--topic); background: var(--topic-bg); }
 
+.paid-badge {
+  font-weight: 700;
+  color: var(--paid);
+  background: var(--paid-bg);
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 10.5px;
+}
+
 .card__title {
   font-size: 15.5px;
   font-weight: 700;
@@ -237,15 +248,13 @@ a { color: inherit; }
   margin: 0 0 6px;
 }
 
+/* 要望1: 要約を省略せずに全文表示(line-clampを撤廃) */
 .card__summary {
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.6;
+  font-size: 13.5px;
+  color: var(--ink);
+  opacity: 0.75;
+  line-height: 1.7;
   margin: 0 0 8px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 .card__tags {
@@ -289,6 +298,7 @@ a { color: inherit; }
   .scan-btn.is-loading .scan-btn__icon { animation: none; }
   .card { transition: none; }
 }
+
 /* ---------- Search bar ---------- */
 .search-bar {
   padding: 10px 24px 0;
