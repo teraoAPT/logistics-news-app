@@ -47,15 +47,26 @@ function relativeTime(iso) {
   return d.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
 }
 
+// 全角/半角スペースどちらでも区切れるように分割し、空の単語は除外
+function parseSearchTerms(query) {
+  return query
+    .toLowerCase()
+    .split(/[\s　]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 function render() {
-  const query = searchQuery.trim().toLowerCase();
+  const terms = parseSearchTerms(searchQuery);
 
   const filtered = allItems.filter((it) => {
     if (activeCategory !== 'all' && it.category !== activeCategory) return false;
     if (activeTag && !it.tags.includes(activeTag)) return false;
-    if (query) {
+    if (terms.length > 0) {
       const haystack = `${it.title} ${it.summary} ${it.source} ${it.tags.join(' ')}`.toLowerCase();
-      if (!haystack.includes(query)) return false;
+      // AND検索: 入力した単語を全部含む記事だけ残す
+      const matchesAll = terms.every((term) => haystack.includes(term));
+      if (!matchesAll) return false;
     }
     return true;
   });
@@ -97,7 +108,6 @@ function escapeHtml(str) {
 
 function renderTagbar() {
   const presentTags = new Set(allItems.flatMap((it) => it.tags));
-  // サーバー側で定義した順番(tagOrder)を優先し、そこに無いタグは末尾に追加
   const ordered = [
     ...tagOrder.filter((t) => presentTags.has(t)),
     ...[...presentTags].filter((t) => !tagOrder.includes(t)),
