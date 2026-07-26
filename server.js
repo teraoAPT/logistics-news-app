@@ -123,6 +123,7 @@ function normalizeTitleKey(title) {
 // 「株式会社」「(株)」等を除去し、全角記号・英数字も半角に統一してから、
 // 記事タイトルとの一致を確認します(要約は見ません。メディア名を誤検出するため)。
 // 会社ごとに個別判定するため、1記事に複数社が出てくる場合も会社別にバッジを出します。
+// ※会社数が数千件規模のため、ページング上限は設けず全件取得します。
 // ---------------------------------------------------------------------------
 function toHalfWidth(str) {
   return (str || '')
@@ -140,12 +141,14 @@ function normalizeCompanyName(name) {
 }
 
 let hubspotCache = { companies: [], dealCompanySet: new Set(), fetchedAt: 0 };
-const HUBSPOT_CACHE_MS = 30 * 60 * 1000;
+const HUBSPOT_CACHE_MS = 60 * 60 * 1000; // 1時間キャッシュ(全件取得に時間がかかるため長めに設定)
 
-async function fetchHubspotList(objectType, properties) {
+// 上限なしで全ページを取得する(会社が数千件規模あるため)
+async function fetchHubspotListAll(objectType, properties) {
   const results = [];
   let after = undefined;
-  for (let page = 0; page < 10; page++) {
+  let page = 0;
+  while (true) {
     const url = new URL(`https://api.hubapi.com/crm/v3/objects/${objectType}`);
     url.searchParams.set('limit', '100');
     url.searchParams.set('properties', properties.join(','));
@@ -154,11 +157,14 @@ async function fetchHubspotList(objectType, properties) {
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${HUBSPOT_TOKEN}` },
     });
-    if (!res.ok) throw new Error(`HubSpot ${objectType} fetch failed: ${res.status}`);
+    if (!res.ok) throw new Error(`HubSpot ${objectType} fetch failed: ${res.status} (page ${page})`);
     const data = await res.json();
     results.push(...(data.results || []));
     after = data.paging?.next?.after;
+    page++;
     if (!after) break;
+    // 念のための安全弁(10万件を超えたら異常とみなして打ち切り)
+    if (results.length > 100000) break;
   }
   return results;
 }
@@ -170,8 +176,8 @@ async function refreshHubspotCache() {
   }
   try {
     const [companiesRaw, dealsRaw] = await Promise.all([
-      fetchHubspotList('companies', ['name']),
-      fetchHubspotList('deals', ['dealname']),
+      fetchHubspotListAll('companies', ['name']),
+      fetchHubspotListAll('deals', ['dealname']),
     ]);
 
     const dealCompanySet = new Set();
@@ -208,7 +214,7 @@ async function refreshHubspotCache() {
     }
     const companies = [...seen.entries()].map(([normalized, name]) => ({ normalized, name }));
 
-    hubspotCache = { companies, dealCompanySet, fetchedAt: Date.now() };
+    hubspotCache = { companies, dealCompanySet, fetchedAt: Date.now(), totalRaw: companiesRaw.length };
   } catch (err) {
     hubspotCache = { companies: [], dealCompanySet: new Set(), fetchedAt: Date.now(), error: String(err.message || err) };
   }
@@ -295,10 +301,9 @@ async function fetchAllFeeds() {
   if (hubspotCache.error) {
     errors.push({ feed: 'HubSpot連携', error: hubspotCache.error });
   } else {
-    // 診断情報: HubSpotから読み込めている件数を一時的に表示(原因調査用)
     errors.push({
       feed: 'HubSpot連携(診断情報)',
-      error: `会社${hubspotCache.companies.length}件 / 案件のある会社${hubspotCache.dealCompanySet.size}件 を読み込み済み`,
+      error: `会社${hubspotCache.companies.length}件(HubSpot取得元${hubspotCache.totalRaw}件) / 案件のある会社${hubspotCache.dealCompanySet.size}件`,
     });
   }
 
