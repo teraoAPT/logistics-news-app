@@ -9,6 +9,7 @@ const parser = new Parser({
 });
 
 const PORT = process.env.PORT || 3000;
+const HUBSPOT_TOKEN = process.env.HUBSPOT_TOKEN;
 
 function googleNewsFeed(query) {
   return `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=ja&gl=JP&ceid=JP:ja`;
@@ -79,11 +80,6 @@ const TOPIC_TAGS = [
   { tag: '住友重機械工業', words: ['住友重機械工業'] },
 ];
 
-// ---------------------------------------------------------------------------
-// 有料メディア判定(要望3)
-// 出典名またはリンク先ドメインに一致すれば「有料の可能性が高い」と判定してマークします。
-// 新しい媒体を足したい場合はこの配列に正規表現を追加するだけでOKです。
-// ---------------------------------------------------------------------------
 const PAID_SOURCE_PATTERNS = [
   /日経/, /nikkei/i,
   /東洋経済/,
@@ -114,12 +110,6 @@ function cleanSource(item, feedLabel) {
   return { title, source };
 }
 
-// ---------------------------------------------------------------------------
-// 類似タイトルのグルーピング(要望4)
-// 記号・スペースを除去した見出しの先頭部分をキーにして「同じ出来事の記事」をまとめ、
-// グループ内では有料メディアより無料メディアを優先して1件だけ残します。
-// (表記ゆれが大きい記事は別々のグループとして残ることがあります)
-// ---------------------------------------------------------------------------
 function normalizeTitleKey(title) {
   return (title || '')
     .replace(/[\s　]/g, '')
@@ -128,16 +118,111 @@ function normalizeTitleKey(title) {
     .slice(0, 24);
 }
 
+// ---------------------------------------------------------------------------
+// HubSpot連携
+// 「株式会社」「(株)」等を除去した会社名で、記事タイトルとの一致を確認します。
+// 30分キャッシュ(HubSpot側は更新頻度が高くないため、ニュースより長めにしています)。
+// ---------------------------------------------------------------------------
+function normalizeCompanyName(name) {
+  return (name || '')
+    .replace(/株式会社|㈱|\(株\)|（株）/g, '')
+    .replace(/[\s　]/g, '')
+    .toLowerCase();
+}
+
+let hubspotCache = { companies: [], deals: [], fetchedAt: 0 };
+const HUBSPOT_CACHE_MS = 30 * 60 * 1000;
+
+async function fetchHubspotList(objectType, properties) {
+  const results = [];
+  let after = undefined;
+  for (let page = 0; page < 10; page++) {
+    const url = new URL(`https://api.hubapi.com/crm/v3/objects/${objectType}`);
+    url.searchParams.set('limit', '100');
+    url.searchParams.set('properties', properties.join(','));
+    if (after) url.searchParams.set('after', after);
+
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${HUBSPOT_TOKEN}` },
+    });
+    if (!res.ok) throw new Error(`HubSpot ${objectType} fetch failed: ${res.status}`);
+    const data = await res.json();
+    results.push(...(data.results || []));
+    after = data.paging?.next?.after;
+    if (!after) break;
+  }
+  return results;
+}
+
+async function refreshHubspotCache() {
+  if (!HUBSPOT_TOKEN) {
+    hubspotCache = { companies: [], deals: [], fetchedAt: Date.now(), error: 'HUBSPOT_TOKEN未設定' };
+    return;
+  }
+  try {
+    const [companies, deals] = await Promise.all([
+      fetchHubspotList('companies', ['name']),
+      fetchHubspotList('deals', ['dealname', 'associations']),
+    ]);
+
+    // 商談に紐づく会社名を集めるため、会社ごとの関連付けを取得
+    const dealCompanyNames = new Set();
+    // 商談→会社の関連付けを別途取得(v3では標準プロパティに会社名が含まれないため)
+    for (let i = 0; i < deals.length; i += 100) {
+      const batch = deals.slice(i, i + 100);
+      const res = await fetch('https://api.hubapi.com/crm/v3/associations/deals/companies/batch/read', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${HUBSPOT_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ inputs: batch.map((d) => ({ id: d.id })) }),
+      });
+      if (!res.ok) continue;
+      const assocData = await res.json();
+      const companyIds = new Set();
+      for (const r of assocData.results || []) {
+        for (const to of r.to || []) companyIds.add(to.id);
+      }
+      for (const c of companies) {
+        if (companyIds.has(c.id)) dealCompanyNames.add(normalizeCompanyName(c.properties?.name));
+      }
+    }
+
+    const companyNames = new Set(companies.map((c) => normalizeCompanyName(c.properties?.name)).filter(Boolean));
+
+    hubspotCache = {
+      companies: [...companyNames],
+      deals: [...dealCompanyNames],
+      fetchedAt: Date.now(),
+    };
+  } catch (err) {
+    hubspotCache = { companies: [], deals: [], fetchedAt: Date.now(), error: String(err.message || err) };
+  }
+}
+
+function checkHubspot(title, summary) {
+  const text = normalizeCompanyName(`${title} ${summary || ''}`);
+  const hasLead = hubspotCache.companies.some((name) => name.length >= 2 && text.includes(name));
+  const hasDeal = hubspotCache.deals.some((name) => name.length >= 2 && text.includes(name));
+  return { hasLead, hasDeal };
+}
+
 let cache = { data: null, fetchedAt: 0 };
 const CACHE_MS = 5 * 60 * 1000;
 
 async function fetchAllFeeds() {
+  if (Date.now() - hubspotCache.fetchedAt > HUBSPOT_CACHE_MS) {
+    await refreshHubspotCache();
+  }
+
   const results = await Promise.allSettled(
     FEEDS.map(async (feed) => {
       const parsed = await parser.parseURL(feed.url);
       return (parsed.items || []).map((item) => {
         const { title, source } = cleanSource(item, feed.label);
         const summary = (item.contentSnippet || item.summary || '').slice(0, 400);
+        const { hasLead, hasDeal } = checkHubspot(title, summary);
         return {
           title,
           link: item.link,
@@ -147,6 +232,8 @@ async function fetchAllFeeds() {
           publishedAt: normalizeDate(item).toISOString(),
           summary,
           tags: inferTags(title, summary),
+          hasLead,
+          hasDeal,
         };
       });
     })
@@ -162,7 +249,6 @@ async function fetchAllFeeds() {
     }
   });
 
-  // 完全一致の重複除去(URL基準)
   const seen = new Set();
   const deduped = items.filter((it) => {
     const key = it.link || it.title;
@@ -171,7 +257,6 @@ async function fetchAllFeeds() {
     return true;
   });
 
-  // 類似タイトルのグルーピング → 無料ソース優先で1件に絞る
   const groups = new Map();
   for (const it of deduped) {
     const key = normalizeTitleKey(it.title);
@@ -189,6 +274,10 @@ async function fetchAllFeeds() {
   }
 
   finalItems.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+
+  if (hubspotCache.error) {
+    errors.push({ feed: 'HubSpot連携', error: hubspotCache.error });
+  }
 
   return { items: finalItems, tagOrder: TAG_ORDER, errors, fetchedAt: new Date().toISOString() };
 }
