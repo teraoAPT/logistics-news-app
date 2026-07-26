@@ -325,6 +325,35 @@ a { color: inherit; }
 .search-input::placeholder {
   color: var(--muted);
 }
+/* ---------- HubSpot badges ---------- */
+.card__footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hs-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.hs-badge--deal {
+  color: #1E5E3A;
+  background: #DCEFE1;
+}
+.hs-badge--lead {
+  color: #2F5D82;
+  background: #E3ECF1;
+}
+.hs-badge--none {
+  color: var(--muted);
+  background: #E9EAE6;
+}
 
 @media (max-width: 560px) {
   .search-bar { padding-left: 16px; padding-right: 16px; }
