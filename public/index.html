@@ -28,6 +28,10 @@
 
 <div class="status-bar" id="statusBar">読み込み中...</div>
 
+<div class="search-bar">
+  <input type="text" id="searchInput" class="search-input" placeholder="キーワードで検索(例: ダイフク、決算、AGV...)" />
+</div>
+
 <nav class="tabs" id="tabs">
   <button class="tab is-active" data-filter="all">すべて</button>
   <button class="tab" data-filter="logistics">物流</button>
@@ -41,7 +45,7 @@
   <!-- 記事カードはJSで挿入 -->
 </main>
 
-<div class="empty" id="emptyState" hidden>該当するニュースが見つかりません。フィルタを変えてお試しください。</div>
+<div class="empty" id="emptyState" hidden>該当するニュースが見つかりません。フィルタや検索キーワードを変えてお試しください。</div>
 
 <footer class="footer">
   <p>ソース: Googleニュース検索フィード + MONOist。5分ごとにキャッシュ更新。フィード構成は server.js の FEEDS 配列で編集できます。</p>
