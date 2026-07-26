@@ -120,14 +120,22 @@ function normalizeTitleKey(title) {
 
 // ---------------------------------------------------------------------------
 // HubSpot連携
-// 「株式会社」「(株)」等を除去した会社名で、記事タイトル+要約との一致を確認します。
-// ※ここで見ているのは「タイトル + Googleニュースの要約文」までで、記事本文全体は見ていません。
+// 「株式会社」「(株)」等を除去し、全角記号・英数字も半角に統一してから、
+// 記事タイトルとの一致を確認します(要約は見ません。メディア名を誤検出するため)。
 // 会社ごとに個別判定するため、1記事に複数社が出てくる場合も会社別にバッジを出します。
 // ---------------------------------------------------------------------------
+function toHalfWidth(str) {
+  return (str || '')
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+    .replace(/＆/g, '&')
+    .replace(/－/g, '-')
+    .replace(/　/g, ' ');
+}
+
 function normalizeCompanyName(name) {
-  return (name || '')
+  return toHalfWidth(name || '')
     .replace(/株式会社|㈱|\(株\)|（株）/g, '')
-    .replace(/[\s　]/g, '')
+    .replace(/[\s]/g, '')
     .toLowerCase();
 }
 
@@ -191,7 +199,6 @@ async function refreshHubspotCache() {
       }
     }
 
-    // 表示名(元の名前)を保持しつつ、正規化名で重複除去
     const seen = new Map();
     for (const c of companiesRaw) {
       const displayName = (c.properties?.name || '').trim();
@@ -207,9 +214,9 @@ async function refreshHubspotCache() {
   }
 }
 
-// 会社ごとの一致結果を返す(1記事に複数社が出てくる場合に対応)
-function checkHubspot(title, summary) {
-  const text = normalizeCompanyName(`${title} ${summary || ''}`);
+// タイトルだけを見て会社ごとの一致結果を返す(要約は見ない)
+function checkHubspot(title) {
+  const text = normalizeCompanyName(title);
   const matches = [];
   for (const c of hubspotCache.companies) {
     if (text.includes(c.normalized)) {
@@ -233,7 +240,7 @@ async function fetchAllFeeds() {
       return (parsed.items || []).map((item) => {
         const { title, source } = cleanSource(item, feed.label);
         const summary = (item.contentSnippet || item.summary || '').slice(0, 400);
-        const hubspotMatches = checkHubspot(title, summary);
+        const hubspotMatches = checkHubspot(title);
         return {
           title,
           link: item.link,
@@ -287,6 +294,12 @@ async function fetchAllFeeds() {
 
   if (hubspotCache.error) {
     errors.push({ feed: 'HubSpot連携', error: hubspotCache.error });
+  } else {
+    // 診断情報: HubSpotから読み込めている件数を一時的に表示(原因調査用)
+    errors.push({
+      feed: 'HubSpot連携(診断情報)',
+      error: `会社${hubspotCache.companies.length}件 / 案件のある会社${hubspotCache.dealCompanySet.size}件 を読み込み済み`,
+    });
   }
 
   return { items: finalItems, tagOrder: TAG_ORDER, errors, fetchedAt: new Date().toISOString() };
