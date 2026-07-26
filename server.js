@@ -120,11 +120,6 @@ function normalizeTitleKey(title) {
 
 // ---------------------------------------------------------------------------
 // HubSpot連携
-// 「株式会社」「(株)」等を除去し、全角記号・英数字も半角に統一してから、
-// 記事タイトルとの一致を確認します(要約は見ません。メディア名を誤検出するため)。
-// 会社ごとに個別判定するため、1記事に複数社が出てくる場合も会社別にバッジを出します。
-// 会社数が数千件規模のため、ページング上限は設けず全件取得します。
-// データ更新は「裏側で自動的に」行い、ユーザーのアクセスを待たせません。
 // ---------------------------------------------------------------------------
 function toHalfWidth(str) {
   return (str || '')
@@ -141,8 +136,25 @@ function normalizeCompanyName(name) {
     .toLowerCase();
 }
 
-let hubspotCache = { companies: [], dealCompanySet: new Set(), fetchedAt: 0, ready: false };
-const HUBSPOT_REFRESH_MS = 60 * 60 * 1000; // 1時間ごとに裏で自動更新
+// 会社名の直後にこれらの語が続く場合は「別の言葉に紛れ込んだだけ」とみなして除外
+// (例:「関西物流」+「展」= 関西物流展、というイベント名との誤一致を防ぐ)
+// 完全ではありませんが、明らかな誤検出パターンが見つかったらここに追加していきます。
+const FALSE_POSITIVE_SUFFIXES = ['展', '展示会', '協会', '組合', '連盟', 'センター', '見本市', 'フェア'];
+
+function matchCompanyInText(text, normalized) {
+  let searchFrom = 0;
+  while (true) {
+    const idx = text.indexOf(normalized, searchFrom);
+    if (idx === -1) return false;
+    const tail = text.slice(idx + normalized.length, idx + normalized.length + 4);
+    const isFalsePositive = FALSE_POSITIVE_SUFFIXES.some((suf) => tail.startsWith(suf));
+    if (!isFalsePositive) return true;
+    searchFrom = idx + normalized.length;
+  }
+}
+
+let hubspotCache = { companies: [], dealCompanySet: new Set(), ownerNameByCompany: new Map(), fetchedAt: 0, ready: false };
+const HUBSPOT_REFRESH_MS = 60 * 60 * 1000;
 let hubspotRefreshing = false;
 
 async function fetchHubspotListAll(objectType, properties) {
@@ -164,22 +176,48 @@ async function fetchHubspotListAll(objectType, properties) {
     after = data.paging?.next?.after;
     page++;
     if (!after) break;
-    if (results.length > 100000) break; // 安全弁
+    if (results.length > 100000) break;
   }
   return results;
 }
 
+// オーナー(担当者)の一覧を取得してid→名前のMapを作る(取得失敗時は空のMapを返し、処理は継続)
+async function fetchOwnersMap() {
+  const ownerMap = new Map();
+  try {
+    let after = undefined;
+    while (true) {
+      const url = new URL('https://api.hubapi.com/crm/v3/owners/');
+      url.searchParams.set('limit', '100');
+      if (after) url.searchParams.set('after', after);
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${HUBSPOT_TOKEN}` } });
+      if (!res.ok) break;
+      const data = await res.json();
+      for (const o of data.results || []) {
+        const name = `${o.firstName || ''} ${o.lastName || ''}`.trim() || o.email || '';
+        if (name) ownerMap.set(String(o.id), name);
+      }
+      after = data.paging?.next?.after;
+      if (!after) break;
+    }
+  } catch (err) {
+    console.error('[HubSpot] オーナー取得失敗(担当者表示なしで継続):', err.message || err);
+  }
+  return ownerMap;
+}
+
 async function refreshHubspotCache() {
-  if (hubspotRefreshing) return; // 二重実行防止
+  if (hubspotRefreshing) return;
   hubspotRefreshing = true;
   try {
     if (!HUBSPOT_TOKEN) {
       hubspotCache = { ...hubspotCache, error: 'HUBSPOT_TOKEN未設定', ready: true, fetchedAt: Date.now() };
       return;
     }
-    const [companiesRaw, dealsRaw] = await Promise.all([
-      fetchHubspotListAll('companies', ['name']),
+    const [companiesRaw, dealsRaw, ownersMap] = await Promise.all([
+      fetchHubspotListAll('companies', ['name', 'hubspot_owner_id']),
       fetchHubspotListAll('deals', ['dealname']),
+      fetchOwnersMap(),
     ]);
 
     const dealCompanySet = new Set();
@@ -208,17 +246,24 @@ async function refreshHubspotCache() {
     }
 
     const seen = new Map();
+    const ownerNameByCompany = new Map();
     for (const c of companiesRaw) {
       const displayName = (c.properties?.name || '').trim();
       const norm = normalizeCompanyName(displayName);
       if (!norm || norm.length < 2) continue;
       if (!seen.has(norm)) seen.set(norm, displayName);
+
+      const ownerId = c.properties?.hubspot_owner_id;
+      if (ownerId && ownersMap.has(String(ownerId)) && !ownerNameByCompany.has(norm)) {
+        ownerNameByCompany.set(norm, ownersMap.get(String(ownerId)));
+      }
     }
     const companies = [...seen.entries()].map(([normalized, name]) => ({ normalized, name }));
 
     hubspotCache = {
       companies,
       dealCompanySet,
+      ownerNameByCompany,
       fetchedAt: Date.now(),
       totalRaw: companiesRaw.length,
       ready: true,
@@ -233,7 +278,6 @@ async function refreshHubspotCache() {
   }
 }
 
-// サーバー起動時に1回実行し、以後は1時間ごとに裏で自動更新(リクエストを待たせない)
 refreshHubspotCache();
 setInterval(refreshHubspotCache, HUBSPOT_REFRESH_MS);
 
@@ -241,8 +285,12 @@ function checkHubspot(title) {
   const text = normalizeCompanyName(title);
   const matches = [];
   for (const c of hubspotCache.companies) {
-    if (text.includes(c.normalized)) {
-      matches.push({ name: c.name, hasDeal: hubspotCache.dealCompanySet.has(c.normalized) });
+    if (matchCompanyInText(text, c.normalized)) {
+      matches.push({
+        name: c.name,
+        hasDeal: hubspotCache.dealCompanySet.has(c.normalized),
+        ownerName: hubspotCache.ownerNameByCompany.get(c.normalized) || null,
+      });
     }
   }
   return matches;
