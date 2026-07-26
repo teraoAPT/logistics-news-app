@@ -38,6 +38,27 @@ const FEEDS = [
   { url: googleNewsFeed('西部電機 物流'), category: 'topic', label: 'Googleニュース: 西部電機' },
   { url: googleNewsFeed('トヨタL&F OR トヨタL＆F'), category: 'topic', label: 'Googleニュース: トヨタL&F' },
   { url: googleNewsFeed('豊田自動織機'), category: 'topic', label: 'Googleニュース: 豊田自動織機' },
+  { url: googleNewsFeed('住友重機械工業 物流 OR 住友重機械工業 搬送'), category: 'topic', label: 'Googleニュース: 住友重機械工業' },
+];
+
+// タグの並び順(この配列の順番通りにタグバーへ表示されます)
+const TAG_ORDER = [
+  '人手不足/2024年問題',
+  '自動倉庫',
+  'DX/スマート工場',
+  '業務提携',
+  '業績',
+  'M&A/経営',
+  'FA/設備投資',
+  'AMR/AGV/AGF',
+  'WMS/WCS/WES',
+  'ダイフク',
+  '村田機械',
+  'IHI',
+  'トヨタL&F',
+  '豊田自動織機',
+  '西部電機',
+  '住友重機械工業',
 ];
 
 const TOPIC_TAGS = [
@@ -56,6 +77,7 @@ const TOPIC_TAGS = [
   { tag: '西部電機', words: ['西部電機'] },
   { tag: 'トヨタL&F', words: ['トヨタL&F', 'トヨタL＆F', 'トヨタエルアンドエフ'] },
   { tag: '豊田自動織機', words: ['豊田自動織機'] },
+  { tag: '住友重機械工業', words: ['住友重機械工業'] },
 ];
 
 function inferTags(title, summary) {
@@ -120,7 +142,7 @@ async function fetchAllFeeds() {
 
   deduped.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
 
-  return { items: deduped, errors, fetchedAt: new Date().toISOString() };
+  return { items: deduped, tagOrder: TAG_ORDER, errors, fetchedAt: new Date().toISOString() };
 }
 
 app.get('/api/news', async (req, res) => {
