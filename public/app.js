@@ -47,7 +47,6 @@ function relativeTime(iso) {
   return d.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
 }
 
-// 全角/半角スペースどちらでも区切れるように分割し、空の単語は除外
 function parseSearchTerms(query) {
   return query
     .toLowerCase()
@@ -64,7 +63,6 @@ function render() {
     if (activeTag && !it.tags.includes(activeTag)) return false;
     if (terms.length > 0) {
       const haystack = `${it.title} ${it.summary} ${it.source} ${it.tags.join(' ')}`.toLowerCase();
-      // AND検索: 入力した単語を全部含む記事だけ残す
       const matchesAll = terms.every((term) => haystack.includes(term));
       if (!matchesAll) return false;
     }
@@ -87,7 +85,7 @@ function render() {
         <div class="card__meta">
           <span class="card__id">#${trackingId(it.link || it.title)}</span>
           <span class="card__category-label ${it.category}">${CATEGORY_LABEL[it.category] || it.category}</span>
-          <span>${it.source || '不明ソース'}</span>
+          <span>${it.source || '不明ソース'}${it.isPaid ? ' <span class="paid-badge" title="会員登録が必要な場合があります">🔒有料</span>' : ''}</span>
           <span>・</span>
           <span>${relativeTime(it.publishedAt)}</span>
         </div>
