@@ -123,7 +123,8 @@ function normalizeTitleKey(title) {
 // 「株式会社」「(株)」等を除去し、全角記号・英数字も半角に統一してから、
 // 記事タイトルとの一致を確認します(要約は見ません。メディア名を誤検出するため)。
 // 会社ごとに個別判定するため、1記事に複数社が出てくる場合も会社別にバッジを出します。
-// ※会社数が数千件規模のため、ページング上限は設けず全件取得します。
+// 会社数が数千件規模のため、ページング上限は設けず全件取得します。
+// データ更新は「裏側で自動的に」行い、ユーザーのアクセスを待たせません。
 // ---------------------------------------------------------------------------
 function toHalfWidth(str) {
   return (str || '')
@@ -140,10 +141,10 @@ function normalizeCompanyName(name) {
     .toLowerCase();
 }
 
-let hubspotCache = { companies: [], dealCompanySet: new Set(), fetchedAt: 0 };
-const HUBSPOT_CACHE_MS = 60 * 60 * 1000; // 1時間キャッシュ(全件取得に時間がかかるため長めに設定)
+let hubspotCache = { companies: [], dealCompanySet: new Set(), fetchedAt: 0, ready: false };
+const HUBSPOT_REFRESH_MS = 60 * 60 * 1000; // 1時間ごとに裏で自動更新
+let hubspotRefreshing = false;
 
-// 上限なしで全ページを取得する(会社が数千件規模あるため)
 async function fetchHubspotListAll(objectType, properties) {
   const results = [];
   let after = undefined;
@@ -163,18 +164,19 @@ async function fetchHubspotListAll(objectType, properties) {
     after = data.paging?.next?.after;
     page++;
     if (!after) break;
-    // 念のための安全弁(10万件を超えたら異常とみなして打ち切り)
-    if (results.length > 100000) break;
+    if (results.length > 100000) break; // 安全弁
   }
   return results;
 }
 
 async function refreshHubspotCache() {
-  if (!HUBSPOT_TOKEN) {
-    hubspotCache = { companies: [], dealCompanySet: new Set(), fetchedAt: Date.now(), error: 'HUBSPOT_TOKEN未設定' };
-    return;
-  }
+  if (hubspotRefreshing) return; // 二重実行防止
+  hubspotRefreshing = true;
   try {
+    if (!HUBSPOT_TOKEN) {
+      hubspotCache = { ...hubspotCache, error: 'HUBSPOT_TOKEN未設定', ready: true, fetchedAt: Date.now() };
+      return;
+    }
     const [companiesRaw, dealsRaw] = await Promise.all([
       fetchHubspotListAll('companies', ['name']),
       fetchHubspotListAll('deals', ['dealname']),
@@ -214,13 +216,27 @@ async function refreshHubspotCache() {
     }
     const companies = [...seen.entries()].map(([normalized, name]) => ({ normalized, name }));
 
-    hubspotCache = { companies, dealCompanySet, fetchedAt: Date.now(), totalRaw: companiesRaw.length };
+    hubspotCache = {
+      companies,
+      dealCompanySet,
+      fetchedAt: Date.now(),
+      totalRaw: companiesRaw.length,
+      ready: true,
+      error: null,
+    };
+    console.log(`[HubSpot] 更新完了: 会社${companies.length}件 / 取引データのある会社${dealCompanySet.size}件`);
   } catch (err) {
-    hubspotCache = { companies: [], dealCompanySet: new Set(), fetchedAt: Date.now(), error: String(err.message || err) };
+    hubspotCache = { ...hubspotCache, error: String(err.message || err), fetchedAt: Date.now(), ready: true };
+    console.error('[HubSpot] 更新失敗:', err.message || err);
+  } finally {
+    hubspotRefreshing = false;
   }
 }
 
-// タイトルだけを見て会社ごとの一致結果を返す(要約は見ない)
+// サーバー起動時に1回実行し、以後は1時間ごとに裏で自動更新(リクエストを待たせない)
+refreshHubspotCache();
+setInterval(refreshHubspotCache, HUBSPOT_REFRESH_MS);
+
 function checkHubspot(title) {
   const text = normalizeCompanyName(title);
   const matches = [];
@@ -236,10 +252,6 @@ let cache = { data: null, fetchedAt: 0 };
 const CACHE_MS = 5 * 60 * 1000;
 
 async function fetchAllFeeds() {
-  if (Date.now() - hubspotCache.fetchedAt > HUBSPOT_CACHE_MS) {
-    await refreshHubspotCache();
-  }
-
   const results = await Promise.allSettled(
     FEEDS.map(async (feed) => {
       const parsed = await parser.parseURL(feed.url);
@@ -298,13 +310,10 @@ async function fetchAllFeeds() {
 
   finalItems.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
 
-  if (hubspotCache.error) {
+  if (!hubspotCache.ready) {
+    errors.push({ feed: 'HubSpot連携', error: '初回データ読み込み中です(裏側で処理中、記事のHubSpot判定は次回反映されます)' });
+  } else if (hubspotCache.error) {
     errors.push({ feed: 'HubSpot連携', error: hubspotCache.error });
-  } else {
-    errors.push({
-      feed: 'HubSpot連携(診断情報)',
-      error: `会社${hubspotCache.companies.length}件(HubSpot取得元${hubspotCache.totalRaw}件) / 案件のある会社${hubspotCache.dealCompanySet.size}件`,
-    });
   }
 
   return { items: finalItems, tagOrder: TAG_ORDER, errors, fetchedAt: new Date().toISOString() };
