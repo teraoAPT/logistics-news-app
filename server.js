@@ -10,42 +10,28 @@ const parser = new Parser({
 
 const PORT = process.env.PORT || 3000;
 
-// ---------------------------------------------------------------------------
-// フィード設定
-// 個別業界紙(LNEWS/物流ウィークリー等)は公開RSSが不安定なため、
-// Googleニュースのキーワード検索RSS(常に安定して稼働)を主軸に、
-// 確認済みの専門メディアRSSを組み合わせています。
-// 製造業系は「工場見学・コンテスト」等の教育ノイズを除外ワードで弾いています。
-// 新しいソースを足したい時は、この配列に { url, category, label } を追加するだけでOKです。
-// ---------------------------------------------------------------------------
-
 function googleNewsFeed(query) {
   return `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=ja&gl=JP&ceid=JP:ja`;
 }
 
-// 製造業系ノイズ除外ワード(学校教育・イベント系を弾く)
 const NOISE_EXCLUDE = '-コンテスト -体験教室 -出前授業 -高校生 -部活動 -キャリア教育 -ワークショップ';
 
 const FEEDS = [
-  // 物流 - 広範
   { url: googleNewsFeed('物流 OR ロジスティクス'), category: 'logistics', label: 'Googleニュース: 物流全般' },
   { url: googleNewsFeed('サプライチェーン'), category: 'logistics', label: 'Googleニュース: サプライチェーン' },
   { url: googleNewsFeed('倉庫 自動化 OR 自動倉庫'), category: 'logistics', label: 'Googleニュース: 自動倉庫' },
   { url: googleNewsFeed('物流 2024年問題 OR 物流 2025年問題 OR 物流 人手不足'), category: 'logistics', label: 'Googleニュース: 物流人手不足' },
 
-  // 製造業 - 営業実務に寄せた4本立て(旧「製造業 OR ものづくり」の広い検索は廃止)
   { url: googleNewsFeed(`(工場 OR 製造業) (物流 OR 搬送 OR マテハン OR 構内物流) ${NOISE_EXCLUDE}`), category: 'manufacturing', label: 'Googleニュース: 製造業×物流' },
   { url: googleNewsFeed(`(工場 OR 製造業) (設備投資 OR ファクトリーオートメーション OR FA化 OR 増産投資 OR 生産ライン新設) ${NOISE_EXCLUDE}`), category: 'manufacturing', label: 'Googleニュース: FA/設備投資' },
   { url: googleNewsFeed(`製造業 (M&A OR 買収 OR 資本業務提携 OR 経営統合) ${NOISE_EXCLUDE}`), category: 'manufacturing', label: 'Googleニュース: 製造業M&A' },
   { url: googleNewsFeed(`製造業 (決算 OR 増収増益 OR 上方修正 OR 業績予想) ${NOISE_EXCLUDE}`), category: 'manufacturing', label: 'Googleニュース: 製造業業績' },
   { url: 'https://rss.itmedia.co.jp/rss/2.0/monoist.xml', category: 'manufacturing', label: 'MONOist(ものづくり専門メディア)' },
 
-  // 寺尾さんの関心テーマ(WXS/AMR/AGV/AGF/WMS)に近いトピック
   { url: googleNewsFeed('AMR OR AGV OR AGF 導入 工場'), category: 'topic', label: 'Googleニュース: AMR/AGV/AGF' },
   { url: googleNewsFeed('WMS OR WCS OR WES 倉庫管理システム'), category: 'topic', label: 'Googleニュース: WMS/WCS/WES' },
   { url: googleNewsFeed('物流 業務提携'), category: 'topic', label: 'Googleニュース: 業務提携' },
 
-  // 競合企業ウォッチ
   { url: googleNewsFeed('ダイフク'), category: 'topic', label: 'Googleニュース: ダイフク' },
   { url: googleNewsFeed('村田機械'), category: 'topic', label: 'Googleニュース: 村田機械' },
   { url: googleNewsFeed('IHI 物流 OR IHI 搬送'), category: 'topic', label: 'Googleニュース: IHI' },
@@ -58,7 +44,6 @@ const TOPIC_TAGS = [
   { tag: '自動倉庫', words: ['自動倉庫', 'スタッカークレーン', '自動化倉庫'] },
   { tag: 'AMR/AGV/AGF', words: ['AMR', 'AGV', 'AGF', '自律走行搬送', '無人搬送'] },
   { tag: 'WMS/WCS/WES', words: ['WMS', 'WCS', 'WES', '倉庫管理システム'] },
-  { tag: '製造業×物流', words: ['構内物流', '生産物流', '工場 物流'] },
   { tag: 'FA/設備投資', words: ['設備投資', 'ファクトリーオートメーション', 'FA化', '生産ライン新設', '増産投資'] },
   { tag: '業績', words: ['決算', '増収増益', '上方修正', '業績予想'] },
   { tag: '人手不足/2024年問題', words: ['人手不足', '2024年問題', '2025年問題', 'ドライバー不足'] },
