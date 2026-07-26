@@ -63,7 +63,7 @@ function hubspotBadges(it) {
   return matches
     .map((m) => {
       const cls = m.hasDeal ? 'hs-badge--deal' : 'hs-badge--lead';
-      const label = m.hasDeal ? '案件あり' : 'リード情報あり';
+      const label = m.hasDeal ? '取引データあり' : 'リード情報あり';
       return `<span class="hs-badge ${cls}">${escapeHtml(m.name)}: ${label}</span>`;
     })
     .join('');
