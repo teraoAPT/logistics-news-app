@@ -29,16 +29,15 @@
 
   <div class="status-bar" id="statusBar">読み込み中...</div>
 
-  <div class="search-bar">
+  <div class="toolbar-row">
+    <nav class="tabs" id="tabs">
+      <button class="tab is-active" data-filter="all">すべて</button>
+      <button class="tab" data-filter="logistics">物流</button>
+      <button class="tab" data-filter="manufacturing">製造業</button>
+      <button class="tab" data-filter="topic">注目トピック</button>
+    </nav>
     <input type="text" id="searchInput" class="search-input" placeholder="キーワードで検索(例: ダイフク、決算、AGV...)" />
   </div>
-
-  <nav class="tabs" id="tabs">
-    <button class="tab is-active" data-filter="all">すべて</button>
-    <button class="tab" data-filter="logistics">物流</button>
-    <button class="tab" data-filter="manufacturing">製造業</button>
-    <button class="tab" data-filter="topic">注目トピック</button>
-  </nav>
 
   <div class="tagbar" id="tagbar"></div>
 </div>
