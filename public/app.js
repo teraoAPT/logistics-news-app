@@ -55,10 +55,18 @@ function parseSearchTerms(query) {
     .filter(Boolean);
 }
 
-function hubspotBadge(it) {
-  if (it.hasDeal) return '<span class="hs-badge hs-badge--deal">案件あり</span>';
-  if (it.hasLead) return '<span class="hs-badge hs-badge--lead">リード情報あり</span>';
-  return '<span class="hs-badge hs-badge--none">HubSpot情報なし</span>';
+function hubspotBadges(it) {
+  const matches = it.hubspotMatches || [];
+  if (matches.length === 0) {
+    return '<span class="hs-badge hs-badge--none">HubSpot情報なし</span>';
+  }
+  return matches
+    .map((m) => {
+      const cls = m.hasDeal ? 'hs-badge--deal' : 'hs-badge--lead';
+      const label = m.hasDeal ? '案件あり' : 'リード情報あり';
+      return `<span class="hs-badge ${cls}">${escapeHtml(m.name)}: ${label}</span>`;
+    })
+    .join('');
 }
 
 function render() {
@@ -97,10 +105,8 @@ function render() {
         </div>
         <p class="card__title">${escapeHtml(it.title)}</p>
         ${it.summary ? `<p class="card__summary">${escapeHtml(it.summary)}</p>` : ''}
-        <div class="card__footer-row">
-          <div class="card__tags">${it.tags.map((t) => `<span>${t}</span>`).join('')}</div>
-          ${hubspotBadge(it)}
-        </div>
+        <div class="card__tags">${it.tags.map((t) => `<span>${t}</span>`).join('')}</div>
+        <div class="hs-badge-row">${hubspotBadges(it)}</div>
       </div>
     `;
     listEl.appendChild(card);
