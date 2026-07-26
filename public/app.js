@@ -5,6 +5,7 @@ const CATEGORY_LABEL = {
 };
 
 let allItems = [];
+let tagOrder = [];
 let activeCategory = 'all';
 let activeTag = null;
 let searchQuery = '';
@@ -95,10 +96,16 @@ function escapeHtml(str) {
 }
 
 function renderTagbar() {
-  const allTags = [...new Set(allItems.flatMap((it) => it.tags))];
+  const presentTags = new Set(allItems.flatMap((it) => it.tags));
+  // サーバー側で定義した順番(tagOrder)を優先し、そこに無いタグは末尾に追加
+  const ordered = [
+    ...tagOrder.filter((t) => presentTags.has(t)),
+    ...[...presentTags].filter((t) => !tagOrder.includes(t)),
+  ];
+
   tagbarEl.innerHTML = '';
-  if (allTags.length === 0) return;
-  allTags.forEach((tag) => {
+  if (ordered.length === 0) return;
+  ordered.forEach((tag) => {
     const chip = document.createElement('button');
     chip.className = 'chip' + (activeTag === tag ? ' is-active' : '');
     chip.textContent = tag;
@@ -131,6 +138,7 @@ async function loadNews(force = false) {
     const res = await fetch(`/api/news${force ? '?refresh=1' : ''}`);
     const data = await res.json();
     allItems = data.items || [];
+    tagOrder = data.tagOrder || [];
     const errCount = (data.errors || []).length;
     const fetchedAt = new Date(data.fetchedAt).toLocaleTimeString('ja-JP', { hour12: false });
     statusBar.textContent = `記事 ${allItems.length}件 ・ 最終取得 ${fetchedAt}${errCount ? ` ・ ${errCount}件のフィードで取得エラー` : ''}`;
