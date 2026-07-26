@@ -120,6 +120,12 @@ function normalizeTitleKey(title) {
 
 // ---------------------------------------------------------------------------
 // HubSpot連携
+// 「株式会社」「(株)」等を除去し、全角記号・英数字も半角に統一してから、
+// 記事タイトルとの一致を確認します(要約は見ません。メディア名を誤検出するため)。
+// 会社ごとに個別判定するため、1記事に複数社が出てくる場合も会社別にバッジを出します。
+// 会社数が数千件規模のため、ページング上限は設けず全件取得します。
+// データ更新は「裏側で自動的に」行い、ユーザーのアクセスを待たせません。
+// リクエスト間には間隔を空け、429(レート制限)時は自動で待って再試行します。
 // ---------------------------------------------------------------------------
 function toHalfWidth(str) {
   return (str || '')
@@ -153,6 +159,22 @@ function matchCompanyInText(text, normalized) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// 429(レート制限)が出たら少し待って自動で再試行する fetch
+async function fetchWithRetry(url, options, retries = 5) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(url, options);
+    if (res.status !== 429) return res;
+    const waitMs = 1000 * Math.pow(2, attempt); // 1秒→2秒→4秒...と待ち時間を伸ばす
+    console.log(`[HubSpot] 429received, ${waitMs}ms待って再試行 (${attempt + 1}/${retries})`);
+    await sleep(waitMs);
+  }
+  return fetch(url, options); // 最後の1回はエラーのまま返す
+}
+
 let hubspotCache = { companies: [], dealCompanySet: new Set(), ownerNameByCompany: new Map(), fetchedAt: 0, ready: false };
 const HUBSPOT_REFRESH_MS = 60 * 60 * 1000;
 let hubspotRefreshing = false;
@@ -167,7 +189,7 @@ async function fetchHubspotListAll(objectType, properties) {
     url.searchParams.set('properties', properties.join(','));
     if (after) url.searchParams.set('after', after);
 
-    const res = await fetch(url, {
+    const res = await fetchWithRetry(url, {
       headers: { Authorization: `Bearer ${HUBSPOT_TOKEN}` },
     });
     if (!res.ok) throw new Error(`HubSpot ${objectType} fetch failed: ${res.status} (page ${page})`);
@@ -177,6 +199,7 @@ async function fetchHubspotListAll(objectType, properties) {
     page++;
     if (!after) break;
     if (results.length > 100000) break;
+    await sleep(150); // リクエスト間に少し間隔を空けて負荷を抑える
   }
   return results;
 }
@@ -190,7 +213,7 @@ async function fetchOwnersMap() {
       const url = new URL('https://api.hubapi.com/crm/v3/owners/');
       url.searchParams.set('limit', '100');
       if (after) url.searchParams.set('after', after);
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${HUBSPOT_TOKEN}` } });
+      const res = await fetchWithRetry(url, { headers: { Authorization: `Bearer ${HUBSPOT_TOKEN}` } });
       if (!res.ok) break;
       const data = await res.json();
       for (const o of data.results || []) {
@@ -199,6 +222,7 @@ async function fetchOwnersMap() {
       }
       after = data.paging?.next?.after;
       if (!after) break;
+      await sleep(150);
     }
   } catch (err) {
     console.error('[HubSpot] オーナー取得失敗(担当者表示なしで継続):', err.message || err);
@@ -223,7 +247,7 @@ async function refreshHubspotCache() {
     const dealCompanySet = new Set();
     for (let i = 0; i < dealsRaw.length; i += 100) {
       const batch = dealsRaw.slice(i, i + 100);
-      const res = await fetch('https://api.hubapi.com/crm/v3/associations/deals/companies/batch/read', {
+      const res = await fetchWithRetry('https://api.hubapi.com/crm/v3/associations/deals/companies/batch/read', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${HUBSPOT_TOKEN}`,
@@ -231,6 +255,7 @@ async function refreshHubspotCache() {
         },
         body: JSON.stringify({ inputs: batch.map((d) => ({ id: d.id })) }),
       });
+      await sleep(150);
       if (!res.ok) continue;
       const assocData = await res.json();
       const companyIds = new Set();
