@@ -7,6 +7,7 @@ const CATEGORY_LABEL = {
 let allItems = [];
 let activeCategory = 'all';
 let activeTag = null;
+let searchQuery = '';
 
 const listEl = document.getElementById('list');
 const emptyEl = document.getElementById('emptyState');
@@ -15,6 +16,7 @@ const tabsEl = document.getElementById('tabs');
 const tagbarEl = document.getElementById('tagbar');
 const refreshBtn = document.getElementById('refreshBtn');
 const clockEl = document.getElementById('clock');
+const searchInput = document.getElementById('searchInput');
 
 function tickClock() {
   const now = new Date();
@@ -45,9 +47,15 @@ function relativeTime(iso) {
 }
 
 function render() {
+  const query = searchQuery.trim().toLowerCase();
+
   const filtered = allItems.filter((it) => {
     if (activeCategory !== 'all' && it.category !== activeCategory) return false;
     if (activeTag && !it.tags.includes(activeTag)) return false;
+    if (query) {
+      const haystack = `${it.title} ${it.summary} ${it.source} ${it.tags.join(' ')}`.toLowerCase();
+      if (!haystack.includes(query)) return false;
+    }
     return true;
   });
 
@@ -108,6 +116,11 @@ tabsEl.addEventListener('click', (e) => {
   if (!btn) return;
   activeCategory = btn.dataset.filter;
   [...tabsEl.children].forEach((c) => c.classList.toggle('is-active', c === btn));
+  render();
+});
+
+searchInput.addEventListener('input', (e) => {
+  searchQuery = e.target.value;
   render();
 });
 
