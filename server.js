@@ -40,6 +40,12 @@ const FEEDS = [
   { url: googleNewsFeed('トヨタL&F OR トヨタL＆F'), category: 'topic', label: 'Googleニュース: トヨタL&F' },
   { url: googleNewsFeed('豊田自動織機'), category: 'topic', label: 'Googleニュース: 豊田自動織機' },
   { url: googleNewsFeed('住友重機械工業 物流 OR 住友重機械工業 搬送'), category: 'topic', label: 'Googleニュース: 住友重機械工業' },
+
+  // タイ市場(APTのタイ拠点拡大に伴う情報収集)
+  { url: googleNewsFeed('タイ 物流 OR タイ ロジスティクス'), category: 'thailand', label: 'Googleニュース: タイ物流' },
+  { url: googleNewsFeed('タイ 進出 OR タイ 工場 OR タイ 生産拠点'), category: 'thailand', label: 'Googleニュース: タイ進出' },
+  { url: googleNewsFeed('タイ サプライチェーン OR タイ 製造業'), category: 'thailand', label: 'Googleニュース: タイ製造業' },
+  { url: googleNewsFeed('Thailand logistics OR Thailand manufacturing investment'), category: 'thailand', label: 'Googleニュース: Thailand(英語)' },
 ];
 
 const TAG_ORDER = [
@@ -120,12 +126,6 @@ function normalizeTitleKey(title) {
 
 // ---------------------------------------------------------------------------
 // HubSpot連携
-// 「株式会社」「(株)」等を除去し、全角記号・英数字も半角に統一してから、
-// 記事タイトルとの一致を確認します(要約は見ません。メディア名を誤検出するため)。
-// 会社ごとに個別判定するため、1記事に複数社が出てくる場合も会社別にバッジを出します。
-// 会社数が数千件規模のため、ページング上限は設けず全件取得します。
-// データ更新は「裏側で自動的に」行い、ユーザーのアクセスを待たせません。
-// リクエスト間には間隔を空け、429(レート制限)時は自動で待って再試行します。
 // ---------------------------------------------------------------------------
 function toHalfWidth(str) {
   return (str || '')
@@ -142,9 +142,6 @@ function normalizeCompanyName(name) {
     .toLowerCase();
 }
 
-// 会社名の直後にこれらの語が続く場合は「別の言葉に紛れ込んだだけ」とみなして除外
-// (例:「関西物流」+「展」= 関西物流展、というイベント名との誤一致を防ぐ)
-// 完全ではありませんが、明らかな誤検出パターンが見つかったらここに追加していきます。
 const FALSE_POSITIVE_SUFFIXES = ['展', '展示会', '協会', '組合', '連盟', 'センター', '見本市', 'フェア'];
 
 function matchCompanyInText(text, normalized) {
@@ -163,16 +160,15 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// 429(レート制限)が出たら少し待って自動で再試行する fetch
 async function fetchWithRetry(url, options, retries = 5) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     const res = await fetch(url, options);
     if (res.status !== 429) return res;
-    const waitMs = 1000 * Math.pow(2, attempt); // 1秒→2秒→4秒...と待ち時間を伸ばす
-    console.log(`[HubSpot] 429received, ${waitMs}ms待って再試行 (${attempt + 1}/${retries})`);
+    const waitMs = 1000 * Math.pow(2, attempt);
+    console.log(`[HubSpot] 429受信, ${waitMs}ms待って再試行 (${attempt + 1}/${retries})`);
     await sleep(waitMs);
   }
-  return fetch(url, options); // 最後の1回はエラーのまま返す
+  return fetch(url, options);
 }
 
 let hubspotCache = { companies: [], dealCompanySet: new Set(), ownerNameByCompany: new Map(), fetchedAt: 0, ready: false };
@@ -199,12 +195,11 @@ async function fetchHubspotListAll(objectType, properties) {
     page++;
     if (!after) break;
     if (results.length > 100000) break;
-    await sleep(150); // リクエスト間に少し間隔を空けて負荷を抑える
+    await sleep(150);
   }
   return results;
 }
 
-// オーナー(担当者)の一覧を取得してid→名前のMapを作る(取得失敗時は空のMapを返し、処理は継続)
 async function fetchOwnersMap() {
   const ownerMap = new Map();
   try {
