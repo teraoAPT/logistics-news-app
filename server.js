@@ -41,7 +41,6 @@ const FEEDS = [
   { url: googleNewsFeed('住友重機械工業 物流 OR 住友重機械工業 搬送'), category: 'topic', label: 'Googleニュース: 住友重機械工業' },
 ];
 
-// タグの並び順(この配列の順番通りにタグバーへ表示されます)
 const TAG_ORDER = [
   '人手不足/2024年問題',
   '自動倉庫',
@@ -80,6 +79,22 @@ const TOPIC_TAGS = [
   { tag: '住友重機械工業', words: ['住友重機械工業'] },
 ];
 
+// ---------------------------------------------------------------------------
+// 有料メディア判定(要望3)
+// 出典名またはリンク先ドメインに一致すれば「有料の可能性が高い」と判定してマークします。
+// 新しい媒体を足したい場合はこの配列に正規表現を追加するだけでOKです。
+// ---------------------------------------------------------------------------
+const PAID_SOURCE_PATTERNS = [
+  /日経/, /nikkei/i,
+  /東洋経済/,
+  /ダイヤモンド.?オンライン/,
+];
+
+function detectPaid(source, link) {
+  const text = `${source || ''} ${link || ''}`;
+  return PAID_SOURCE_PATTERNS.some((re) => re.test(text));
+}
+
 function inferTags(title, summary) {
   const text = `${title} ${summary || ''}`;
   const tags = TOPIC_TAGS.filter((t) => t.words.some((w) => text.includes(w))).map((t) => t.tag);
@@ -99,6 +114,20 @@ function cleanSource(item, feedLabel) {
   return { title, source };
 }
 
+// ---------------------------------------------------------------------------
+// 類似タイトルのグルーピング(要望4)
+// 記号・スペースを除去した見出しの先頭部分をキーにして「同じ出来事の記事」をまとめ、
+// グループ内では有料メディアより無料メディアを優先して1件だけ残します。
+// (表記ゆれが大きい記事は別々のグループとして残ることがあります)
+// ---------------------------------------------------------------------------
+function normalizeTitleKey(title) {
+  return (title || '')
+    .replace(/[\s　]/g, '')
+    .replace(/[【】「」『』()（）\-—―!?！？,、。・:：;；'"]/g, '')
+    .toLowerCase()
+    .slice(0, 24);
+}
+
 let cache = { data: null, fetchedAt: 0 };
 const CACHE_MS = 5 * 60 * 1000;
 
@@ -108,11 +137,12 @@ async function fetchAllFeeds() {
       const parsed = await parser.parseURL(feed.url);
       return (parsed.items || []).map((item) => {
         const { title, source } = cleanSource(item, feed.label);
-        const summary = (item.contentSnippet || item.summary || '').slice(0, 220);
+        const summary = (item.contentSnippet || item.summary || '').slice(0, 400);
         return {
           title,
           link: item.link,
           source,
+          isPaid: detectPaid(source, item.link),
           category: feed.category,
           publishedAt: normalizeDate(item).toISOString(),
           summary,
@@ -132,6 +162,7 @@ async function fetchAllFeeds() {
     }
   });
 
+  // 完全一致の重複除去(URL基準)
   const seen = new Set();
   const deduped = items.filter((it) => {
     const key = it.link || it.title;
@@ -140,9 +171,26 @@ async function fetchAllFeeds() {
     return true;
   });
 
-  deduped.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+  // 類似タイトルのグルーピング → 無料ソース優先で1件に絞る
+  const groups = new Map();
+  for (const it of deduped) {
+    const key = normalizeTitleKey(it.title);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(it);
+  }
+  const finalItems = [];
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      finalItems.push(group[0]);
+      continue;
+    }
+    group.sort((a, b) => Number(a.isPaid) - Number(b.isPaid));
+    finalItems.push(group[0]);
+  }
 
-  return { items: deduped, tagOrder: TAG_ORDER, errors, fetchedAt: new Date().toISOString() };
+  finalItems.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+
+  return { items: finalItems, tagOrder: TAG_ORDER, errors, fetchedAt: new Date().toISOString() };
 }
 
 app.get('/api/news', async (req, res) => {
