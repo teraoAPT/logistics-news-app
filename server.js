@@ -120,8 +120,9 @@ function normalizeTitleKey(title) {
 
 // ---------------------------------------------------------------------------
 // HubSpot連携
-// 「株式会社」「(株)」等を除去した会社名で、記事タイトルとの一致を確認します。
-// 30分キャッシュ(HubSpot側は更新頻度が高くないため、ニュースより長めにしています)。
+// 「株式会社」「(株)」等を除去した会社名で、記事タイトル+要約との一致を確認します。
+// ※ここで見ているのは「タイトル + Googleニュースの要約文」までで、記事本文全体は見ていません。
+// 会社ごとに個別判定するため、1記事に複数社が出てくる場合も会社別にバッジを出します。
 // ---------------------------------------------------------------------------
 function normalizeCompanyName(name) {
   return (name || '')
@@ -130,7 +131,7 @@ function normalizeCompanyName(name) {
     .toLowerCase();
 }
 
-let hubspotCache = { companies: [], deals: [], fetchedAt: 0 };
+let hubspotCache = { companies: [], dealCompanySet: new Set(), fetchedAt: 0 };
 const HUBSPOT_CACHE_MS = 30 * 60 * 1000;
 
 async function fetchHubspotList(objectType, properties) {
@@ -156,20 +157,18 @@ async function fetchHubspotList(objectType, properties) {
 
 async function refreshHubspotCache() {
   if (!HUBSPOT_TOKEN) {
-    hubspotCache = { companies: [], deals: [], fetchedAt: Date.now(), error: 'HUBSPOT_TOKEN未設定' };
+    hubspotCache = { companies: [], dealCompanySet: new Set(), fetchedAt: Date.now(), error: 'HUBSPOT_TOKEN未設定' };
     return;
   }
   try {
-    const [companies, deals] = await Promise.all([
+    const [companiesRaw, dealsRaw] = await Promise.all([
       fetchHubspotList('companies', ['name']),
-      fetchHubspotList('deals', ['dealname', 'associations']),
+      fetchHubspotList('deals', ['dealname']),
     ]);
 
-    // 商談に紐づく会社名を集めるため、会社ごとの関連付けを取得
-    const dealCompanyNames = new Set();
-    // 商談→会社の関連付けを別途取得(v3では標準プロパティに会社名が含まれないため)
-    for (let i = 0; i < deals.length; i += 100) {
-      const batch = deals.slice(i, i + 100);
+    const dealCompanySet = new Set();
+    for (let i = 0; i < dealsRaw.length; i += 100) {
+      const batch = dealsRaw.slice(i, i + 100);
       const res = await fetch('https://api.hubapi.com/crm/v3/associations/deals/companies/batch/read', {
         method: 'POST',
         headers: {
@@ -184,28 +183,40 @@ async function refreshHubspotCache() {
       for (const r of assocData.results || []) {
         for (const to of r.to || []) companyIds.add(to.id);
       }
-      for (const c of companies) {
-        if (companyIds.has(c.id)) dealCompanyNames.add(normalizeCompanyName(c.properties?.name));
+      for (const c of companiesRaw) {
+        if (companyIds.has(c.id)) {
+          const norm = normalizeCompanyName(c.properties?.name);
+          if (norm) dealCompanySet.add(norm);
+        }
       }
     }
 
-    const companyNames = new Set(companies.map((c) => normalizeCompanyName(c.properties?.name)).filter(Boolean));
+    // 表示名(元の名前)を保持しつつ、正規化名で重複除去
+    const seen = new Map();
+    for (const c of companiesRaw) {
+      const displayName = (c.properties?.name || '').trim();
+      const norm = normalizeCompanyName(displayName);
+      if (!norm || norm.length < 2) continue;
+      if (!seen.has(norm)) seen.set(norm, displayName);
+    }
+    const companies = [...seen.entries()].map(([normalized, name]) => ({ normalized, name }));
 
-    hubspotCache = {
-      companies: [...companyNames],
-      deals: [...dealCompanyNames],
-      fetchedAt: Date.now(),
-    };
+    hubspotCache = { companies, dealCompanySet, fetchedAt: Date.now() };
   } catch (err) {
-    hubspotCache = { companies: [], deals: [], fetchedAt: Date.now(), error: String(err.message || err) };
+    hubspotCache = { companies: [], dealCompanySet: new Set(), fetchedAt: Date.now(), error: String(err.message || err) };
   }
 }
 
+// 会社ごとの一致結果を返す(1記事に複数社が出てくる場合に対応)
 function checkHubspot(title, summary) {
   const text = normalizeCompanyName(`${title} ${summary || ''}`);
-  const hasLead = hubspotCache.companies.some((name) => name.length >= 2 && text.includes(name));
-  const hasDeal = hubspotCache.deals.some((name) => name.length >= 2 && text.includes(name));
-  return { hasLead, hasDeal };
+  const matches = [];
+  for (const c of hubspotCache.companies) {
+    if (text.includes(c.normalized)) {
+      matches.push({ name: c.name, hasDeal: hubspotCache.dealCompanySet.has(c.normalized) });
+    }
+  }
+  return matches;
 }
 
 let cache = { data: null, fetchedAt: 0 };
@@ -222,7 +233,7 @@ async function fetchAllFeeds() {
       return (parsed.items || []).map((item) => {
         const { title, source } = cleanSource(item, feed.label);
         const summary = (item.contentSnippet || item.summary || '').slice(0, 400);
-        const { hasLead, hasDeal } = checkHubspot(title, summary);
+        const hubspotMatches = checkHubspot(title, summary);
         return {
           title,
           link: item.link,
@@ -232,8 +243,7 @@ async function fetchAllFeeds() {
           publishedAt: normalizeDate(item).toISOString(),
           summary,
           tags: inferTags(title, summary),
-          hasLead,
-          hasDeal,
+          hubspotMatches,
         };
       });
     })
