@@ -10,36 +10,38 @@
 </head>
 <body>
 
-<header class="topbar">
-  <div class="topbar__brand">
-    <span class="topbar__mark">▣</span>
-    <div>
-      <h1>LOGI<span class="slash">/</span>MONO <span class="watch">WATCH</span></h1>
-      <p class="topbar__sub">物流 &amp; 製造業 業界ニュース モニタリング</p>
+<div class="app-header">
+  <header class="topbar">
+    <div class="topbar__brand">
+      <span class="topbar__mark">▣</span>
+      <div>
+        <h1>LOGI<span class="slash">/</span>MONO <span class="watch">WATCH</span></h1>
+        <p class="topbar__sub">物流 &amp; 製造業 業界ニュース モニタリング</p>
+      </div>
     </div>
-  </div>
-  <div class="topbar__meta">
-    <div class="clock" id="clock">--:--:--</div>
-    <button class="scan-btn" id="refreshBtn">
-      <span class="scan-btn__icon">↻</span> 再スキャン
-    </button>
-  </div>
-</header>
+    <div class="topbar__meta">
+      <div class="clock" id="clock">--:--:--</div>
+      <button class="scan-btn" id="refreshBtn">
+        <span class="scan-btn__icon">↻</span> 再スキャン
+      </button>
+    </div>
+  </header>
 
-<div class="status-bar" id="statusBar">読み込み中...</div>
+  <div class="status-bar" id="statusBar">読み込み中...</div>
 
-<div class="search-bar">
-  <input type="text" id="searchInput" class="search-input" placeholder="キーワードで検索(例: ダイフク、決算、AGV...)" />
+  <div class="search-bar">
+    <input type="text" id="searchInput" class="search-input" placeholder="キーワードで検索(例: ダイフク、決算、AGV...)" />
+  </div>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab is-active" data-filter="all">すべて</button>
+    <button class="tab" data-filter="logistics">物流</button>
+    <button class="tab" data-filter="manufacturing">製造業</button>
+    <button class="tab" data-filter="topic">注目トピック</button>
+  </nav>
+
+  <div class="tagbar" id="tagbar"></div>
 </div>
-
-<nav class="tabs" id="tabs">
-  <button class="tab is-active" data-filter="all">すべて</button>
-  <button class="tab" data-filter="logistics">物流</button>
-  <button class="tab" data-filter="manufacturing">製造業</button>
-  <button class="tab" data-filter="topic">注目トピック</button>
-</nav>
-
-<div class="tagbar" id="tagbar"></div>
 
 <main id="list" class="list">
   <!-- 記事カードはJSで挿入 -->
