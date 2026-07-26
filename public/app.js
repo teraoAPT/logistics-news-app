@@ -55,6 +55,12 @@ function parseSearchTerms(query) {
     .filter(Boolean);
 }
 
+function hubspotBadge(it) {
+  if (it.hasDeal) return '<span class="hs-badge hs-badge--deal">案件あり</span>';
+  if (it.hasLead) return '<span class="hs-badge hs-badge--lead">リード情報あり</span>';
+  return '<span class="hs-badge hs-badge--none">HubSpot情報なし</span>';
+}
+
 function render() {
   const terms = parseSearchTerms(searchQuery);
 
@@ -91,7 +97,10 @@ function render() {
         </div>
         <p class="card__title">${escapeHtml(it.title)}</p>
         ${it.summary ? `<p class="card__summary">${escapeHtml(it.summary)}</p>` : ''}
-        <div class="card__tags">${it.tags.map((t) => `<span>${t}</span>`).join('')}</div>
+        <div class="card__footer-row">
+          <div class="card__tags">${it.tags.map((t) => `<span>${t}</span>`).join('')}</div>
+          ${hubspotBadge(it)}
+        </div>
       </div>
     `;
     listEl.appendChild(card);
