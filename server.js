@@ -137,16 +137,68 @@ function normalizeCompanyName(name) {
 
 const FALSE_POSITIVE_SUFFIXES = ['展', '展示会', '協会', '組合', '連盟', 'センター', '見本市', 'フェア'];
 
-function matchCompanyInText(text, normalized) {
-  let searchFrom = 0;
-  while (true) {
-    const idx = text.indexOf(normalized, searchFrom);
-    if (idx === -1) return false;
-    const tail = text.slice(idx + normalized.length, idx + normalized.length + 4);
-    const isFalsePositive = FALSE_POSITIVE_SUFFIXES.some((suf) => tail.startsWith(suf));
-    if (!isFalsePositive) return true;
-    searchFrom = idx + normalized.length;
+// 社名が普通の言葉と同じで、記事の中の言葉に一致してしまうもの
+const GENERIC_NAMES = new Set([
+  'デジタル', 'ライト', 'プラス', 'フロンティア', 'ネクスト', 'ポート', 'ジャパン', 'グローバル', 'システム',
+  'サービス', 'ソリューション', 'テクノロジー', 'ロジスティクス', 'エンジニアリング', 'コンサルティング',
+  'ホールディングス', 'トラスト', 'リンク', 'パートナーズ', 'クリエイト', 'ワークス', 'スマート',
+]);
+
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// 社名の端が英数字やカタカナなら、その前後に同じ種類の文字が続く一致は数えない
+// (「ポート」が「サポート」に、「NEC」が「NECK」に一致しないように)
+// 漢字2文字の社名(関通・東芝・山九など)は、前後に漢字が続かないときだけ数える
+// ただし普通の言葉と同じものは使わない
+const GENERIC_KANJI2 = new Set([
+  '共同', '技研', '日本', '東洋', '中央', '総合', '物流', '産業', '工業', '電機', '電気', '化学', '興産', '商事',
+  '建設', '運輸', '倉庫', '製作', '開発', '未来', '大和', '新生', '協和', '共栄', '第一', '三和',
+]);
+
+function edgeClass(ch, kanjiName) {
+  if (/[a-z0-9]/.test(ch)) return '[a-z0-9]';
+  if (/[ァ-ヶー]/.test(ch)) return '[ァ-ヶー]';
+  if (kanjiName) return '[一-龥々ヶ]';
+  return null;
+}
+
+function buildCompanyMatcher(displayName) {
+  const core = toHalfWidth(displayName || '')
+    .replace(/株式会社|㈱|\(株\)|（株）/g, '')
+    .trim()
+    .toLowerCase();
+  const compact = core.replace(/\s/g, '');
+  // 短すぎる名前(「NE」「セキ」など)・一般的な言葉・自治体は判定に使わない
+  const kanjiName = /^[一-龥々ヶ]{2}$/.test(compact);
+  if (compact.length < 3 && !kanjiName) return null;
+  if (GENERIC_NAMES.has(compact) || GENERIC_KANJI2.has(compact)) return null;
+  if (/(?:都|府|県|市|町|村)$/.test(compact)) return null;
+
+  const body = core.split(/\s+/).map(escapeRegExp).join('\\s*');
+  const before = edgeClass(compact[0], kanjiName);
+  const after = edgeClass(compact[compact.length - 1], kanjiName);
+  const re = new RegExp(`${before ? `(?<!${before})` : ''}${body}${after ? `(?!${after})` : ''}`, 'g');
+  return { compact, re };
+}
+
+function matchCompanyInText(text, compactText, matcher) {
+  // まず空白を除いた文字列で大まかに探し、見つかったときだけ詳しく調べる
+  if (!compactText.includes(matcher.compact)) return false;
+  matcher.re.lastIndex = 0;
+  let m;
+  while ((m = matcher.re.exec(text)) !== null) {
+    const tail = text.slice(m.index + m[0].length, m.index + m[0].length + 4);
+    if (!FALSE_POSITIVE_SUFFIXES.some((suf) => tail.startsWith(suf))) return true;
   }
+  return false;
+}
+
+function withMatchers(companies) {
+  return companies
+    .map((c) => ({ ...c, matcher: buildCompanyMatcher(c.name) }))
+    .filter((c) => c.matcher);
 }
 
 function sleep(ms) {
@@ -171,7 +223,7 @@ const HUBSPOT_REFRESH_MS = 60 * 60 * 1000;
 const savedHubspot = store.loadHubspot();
 if (savedHubspot) {
   hubspotCache = {
-    companies: savedHubspot.companies || [],
+    companies: withMatchers(savedHubspot.companies || []),
     dealCompanySet: new Set(savedHubspot.dealCompanies || []),
     ownerNameByCompany: new Map(savedHubspot.ownerNameByCompany || []),
     fetchedAt: savedHubspot.fetchedAt || 0,
@@ -288,7 +340,7 @@ async function refreshHubspotCache() {
     const companies = [...seen.entries()].map(([normalized, name]) => ({ normalized, name }));
 
     hubspotCache = {
-      companies,
+      companies: withMatchers(companies),
       dealCompanySet,
       ownerNameByCompany,
       fetchedAt: Date.now(),
@@ -317,10 +369,11 @@ refreshHubspotCache();
 setInterval(refreshHubspotCache, HUBSPOT_REFRESH_MS);
 
 function checkHubspot(title) {
-  const text = normalizeCompanyName(title);
+  const text = toHalfWidth(title || '').toLowerCase();
+  const compactText = text.replace(/\s/g, '');
   const matches = [];
   for (const c of hubspotCache.companies) {
-    if (matchCompanyInText(text, c.normalized)) {
+    if (matchCompanyInText(text, compactText, c.matcher)) {
       matches.push({
         name: c.name,
         hasDeal: hubspotCache.dealCompanySet.has(c.normalized),
