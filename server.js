@@ -5,6 +5,7 @@ const store = require('./lib/store');
 const { toHalfWidth } = require('./lib/text');
 const { groupSimilar } = require('./lib/dedupe');
 const { detectProject } = require('./lib/projects');
+const { fetchPreview } = require('./lib/preview');
 
 const app = express();
 const parser = new Parser({
@@ -530,6 +531,35 @@ app.get('/api/news', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: String(err.message || err) });
   }
+});
+
+// 記事のプレビュー。保存している記事のリンクだけを受け付ける(任意のアドレスを取りに行かないように)
+const PREVIEW_RETRY_MS = 6 * 60 * 60 * 1000;
+const previewInFlight = new Map();
+
+app.get('/api/preview', async (req, res) => {
+  const link = String(req.query.link || '');
+  if (!store.hasArticle(link)) return res.status(404).json({ error: '記事が見つかりません' });
+
+  const cached = store.getPreview(link);
+  if (cached && (!cached.failed || Date.now() - cached.fetchedAt < PREVIEW_RETRY_MS)) {
+    return res.json(cached);
+  }
+
+  if (!previewInFlight.has(link)) {
+    previewInFlight.set(link, fetchPreview(link)
+      .then((p) => ({ ...p, fetchedAt: Date.now() }))
+      .catch((err) => {
+        console.error('[プレビュー] 取得失敗:', err.message || err);
+        return { failed: true, fetchedAt: Date.now() };
+      })
+      .then((p) => {
+        store.setPreview(link, p);
+        return p;
+      })
+      .finally(() => previewInFlight.delete(link)));
+  }
+  res.json(await previewInFlight.get(link));
 });
 
 app.use(express.static(path.join(__dirname, 'public')));

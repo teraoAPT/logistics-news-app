@@ -211,7 +211,7 @@ function renderCard(it) {
         ${readMarks[it.link] ? '<span class="read-label">既読</span>' : ''}
         ${it.project ? `<span class="project-label">${escapeHtml(it.project.kind)}</span>` : ''}
       </div>
-      <a class="card__title" href="${escapeHtml(it.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.title)}</a>
+      <a class="card__title" href="${escapeHtml(it.link)}" data-preview="${escapeHtml(it.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.title)}</a>
       ${hasRealSummary(it) ? `<p class="card__summary">${escapeHtml(it.summary)}</p>` : ''}
       <div class="card__tags">${it.tags.map((t) => `<span>${escapeHtml(t)}</span>`).join('')}</div>
       <div class="hs-badge-row">${hubspotBadges(it)}</div>
@@ -317,7 +317,7 @@ function renderProjects() {
         <td>${cell(p.location)}</td>
         <td>${cell(p.purpose)}</td>
         <td>${cell(p.timing)}</td>
-        <td><a href="${escapeHtml(it.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.title)}</a> <span class="muted">(${escapeHtml(it.source || '')})</span></td>
+        <td><a href="${escapeHtml(it.link)}" data-preview="${escapeHtml(it.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.title)}</a> <span class="muted">(${escapeHtml(it.source || '')})</span></td>
       </tr>`;
     })
     .join('');
@@ -375,7 +375,7 @@ function renderCompetitors() {
         .join('');
       const latest = s.items
         .slice(0, 3)
-        .map((it) => `<li><span class="muted">${shortDate(it.publishedAt)}</span> <a href="${escapeHtml(it.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.title)}</a></li>`)
+        .map((it) => `<li><span class="muted">${shortDate(it.publishedAt)}</span> <a href="${escapeHtml(it.link)}" data-preview="${escapeHtml(it.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.title)}</a></li>`)
         .join('');
       return `<div class="competitor">
         <div class="competitor__head">
@@ -411,6 +411,104 @@ document.getElementById('competitorGrid').addEventListener('mousemove', (e) => {
 document.getElementById('competitorGrid').addEventListener('mouseleave', () => {
   tooltipEl.hidden = true;
 });
+
+// ---------------------------------------------------------------------------
+// 記事のプレビュー(リンクにマウスを合わせると、写真と紹介文を出す)
+// ---------------------------------------------------------------------------
+const PREVIEW_DELAY_MS = 400;
+const previewCache = new Map();
+const previewEl = document.createElement('div');
+previewEl.className = 'preview';
+previewEl.hidden = true;
+document.body.appendChild(previewEl);
+
+let previewTimer = null;
+let hideTimer = null;
+let previewLink = null;
+
+function placePreview(anchor) {
+  const r = anchor.getBoundingClientRect();
+  const width = Math.min(420, window.innerWidth - 32);
+  const left = Math.max(16, Math.min(r.left, window.innerWidth - width - 16));
+  const below = window.innerHeight - r.bottom;
+  previewEl.style.width = `${width}px`;
+  previewEl.style.left = `${left}px`;
+  if (below >= 260 || below >= r.top) {
+    previewEl.style.top = `${r.bottom + 6}px`;
+    previewEl.style.bottom = '';
+    previewEl.style.maxHeight = `${Math.min(420, below - 16)}px`;
+  } else {
+    previewEl.style.top = '';
+    previewEl.style.bottom = `${window.innerHeight - r.top + 6}px`;
+    previewEl.style.maxHeight = `${Math.min(420, r.top - 16)}px`;
+  }
+}
+
+function previewHtml(link, p) {
+  const open = `<a class="preview__open" href="${escapeHtml(p && p.url || link)}" target="_blank" rel="noopener noreferrer">記事を開く →</a>`;
+  if (!p) return '<p class="preview__msg">読み込み中...</p>';
+  if (p.failed || (!p.description && !p.image)) {
+    return `<p class="preview__msg">この記事は紹介文を取得できませんでした。</p>${open}`;
+  }
+  return `
+    ${p.image ? `<img class="preview__img" src="${escapeHtml(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
+    ${p.siteName ? `<p class="preview__site">${escapeHtml(p.siteName)}</p>` : ''}
+    <p class="preview__desc">${escapeHtml(p.description || '(紹介文なし)')}</p>
+    <p class="preview__note">媒体が公開している紹介文です。全文は元の記事で読めます。</p>
+    ${open}`;
+}
+
+async function showPreview(anchor) {
+  const link = anchor.dataset.preview;
+  previewLink = link;
+  previewEl.innerHTML = previewHtml(link, previewCache.get(link));
+  previewEl.hidden = false;
+  placePreview(anchor);
+  if (previewCache.has(link)) return;
+  try {
+    const res = await fetch(`/api/preview?link=${encodeURIComponent(link)}`);
+    previewCache.set(link, res.ok ? await res.json() : { failed: true });
+  } catch {
+    previewCache.set(link, { failed: true });
+  }
+  if (previewLink === link && !previewEl.hidden) {
+    previewEl.innerHTML = previewHtml(link, previewCache.get(link));
+    placePreview(anchor);
+  }
+}
+
+function hidePreviewSoon() {
+  clearTimeout(previewTimer);
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(() => {
+    previewEl.hidden = true;
+    previewLink = null;
+  }, 250);
+}
+
+// タッチ操作の端末ではマウスを合わせられないので出さない
+document.addEventListener('pointerover', (e) => {
+  if (e.pointerType !== 'mouse') return;
+  const anchor = e.target.closest('a[data-preview]');
+  if (!anchor) return;
+  clearTimeout(hideTimer);
+  if (previewLink === anchor.dataset.preview && !previewEl.hidden) return;
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => showPreview(anchor), PREVIEW_DELAY_MS);
+});
+
+document.addEventListener('pointerout', (e) => {
+  if (e.target.closest('a[data-preview]') && !previewEl.contains(e.relatedTarget)) hidePreviewSoon();
+});
+
+previewEl.addEventListener('pointerenter', () => clearTimeout(hideTimer));
+previewEl.addEventListener('pointerleave', hidePreviewSoon);
+previewEl.addEventListener('click', (e) => {
+  if (e.target.closest('.preview__open') && previewLink) markRead(previewLink);
+});
+window.addEventListener('scroll', () => {
+  if (!previewEl.hidden && !previewEl.matches(':hover')) hidePreviewSoon();
+}, { passive: true });
 
 // ---------------------------------------------------------------------------
 // 画面の切り替え

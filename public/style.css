@@ -601,6 +601,49 @@ a { color: inherit; }
   white-space: nowrap;
 }
 
+/* ---------- Article preview ---------- */
+.preview {
+  position: fixed;
+  z-index: 300;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--hairline-strong);
+  border-top: 3px solid var(--safety-yellow);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.preview__img {
+  display: block;
+  width: 100%;
+  max-height: 140px;
+  object-fit: cover;
+  border-radius: 3px;
+  margin-bottom: 8px;
+  background: var(--bg);
+}
+.preview__site {
+  margin: 0 0 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+.preview__desc { margin: 0 0 8px; }
+.preview__note {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.preview__msg { margin: 0 0 8px; color: var(--muted); }
+.preview__open {
+  font-weight: 700;
+  color: var(--logistics);
+  text-decoration: none;
+}
+.preview__open:hover { text-decoration: underline; }
+
 @media (max-width: 900px) {
   .topbar { flex-wrap: wrap; }
 }
