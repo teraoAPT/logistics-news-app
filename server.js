@@ -49,10 +49,13 @@ function checkCredentials(header) {
   return userOk && passOk;
 }
 
+// スマホがホーム画面に追加するとき、パスワードなしで取りに来るファイル(中身はサイト名とロゴだけ)
+const PUBLIC_PATHS = new Set(['/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png']);
+
 app.set('trust proxy', 1);
 app.use((req, res, next) => {
   res.set('X-Robots-Tag', 'noindex, nofollow');
-  if (!AUTH_ENABLED) return next();
+  if (!AUTH_ENABLED || PUBLIC_PATHS.has(req.path)) return next();
 
   const now = Date.now();
   const prev = authFailures.get(req.ip);
