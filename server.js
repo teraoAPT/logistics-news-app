@@ -1,6 +1,10 @@
 const express = require('express');
 const Parser = require('rss-parser');
 const path = require('path');
+const store = require('./lib/store');
+const { toHalfWidth } = require('./lib/text');
+const { groupSimilar } = require('./lib/dedupe');
+const { detectProject } = require('./lib/projects');
 
 const app = express();
 const parser = new Parser({
@@ -10,6 +14,9 @@ const parser = new Parser({
 
 const PORT = process.env.PORT || 3000;
 const HUBSPOT_TOKEN = process.env.HUBSPOT_TOKEN;
+
+// /api/news の返答を期間ごとに覚えておく。記事や HubSpot が更新されたら消す
+const responseCache = new Map();
 
 function googleNewsFeed(query) {
   return `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=ja&gl=JP&ceid=JP:ja`;
@@ -109,32 +116,18 @@ function normalizeDate(item) {
   return parsed && !isNaN(parsed) ? parsed : new Date(0);
 }
 
+// Googleニュースのタイトルは「見出し - 媒体名」の形。媒体名に「-」を含むもの(LOGI-BIZ online など)もある
 function cleanSource(item, feedLabel) {
-  const m = /\s-\s([^-]+)$/.exec(item.title || '');
+  const raw = item.title || '';
+  const m = /\s-\s((?:(?!\s-\s).){1,40})$/.exec(raw);
   const source = m ? m[1].trim() : (item.source?.title || feedLabel);
-  const title = m ? item.title.slice(0, item.title.length - m[0].length).trim() : item.title;
+  const title = m ? raw.slice(0, m.index).trim() : raw;
   return { title, source };
-}
-
-function normalizeTitleKey(title) {
-  return (title || '')
-    .replace(/[\s　]/g, '')
-    .replace(/[【】「」『』()（）\-—―!?！？,、。・:：;；'"]/g, '')
-    .toLowerCase()
-    .slice(0, 24);
 }
 
 // ---------------------------------------------------------------------------
 // HubSpot連携
 // ---------------------------------------------------------------------------
-function toHalfWidth(str) {
-  return (str || '')
-    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
-    .replace(/＆/g, '&')
-    .replace(/－/g, '-')
-    .replace(/　/g, ' ');
-}
-
 function normalizeCompanyName(name) {
   return toHalfWidth(name || '')
     .replace(/株式会社|㈱|\(株\)|（株）/g, '')
@@ -173,6 +166,20 @@ async function fetchWithRetry(url, options, retries = 5) {
 
 let hubspotCache = { companies: [], dealCompanySet: new Set(), ownerNameByCompany: new Map(), fetchedAt: 0, ready: false };
 const HUBSPOT_REFRESH_MS = 60 * 60 * 1000;
+
+// 前回保存した HubSpot のデータがあれば、起動直後から印を出せるように読み込む
+const savedHubspot = store.loadHubspot();
+if (savedHubspot) {
+  hubspotCache = {
+    companies: savedHubspot.companies || [],
+    dealCompanySet: new Set(savedHubspot.dealCompanies || []),
+    ownerNameByCompany: new Map(savedHubspot.ownerNameByCompany || []),
+    fetchedAt: savedHubspot.fetchedAt || 0,
+    ready: true,
+    error: null,
+  };
+  console.log(`[HubSpot] 保存データを読み込み: 会社${hubspotCache.companies.length}件`);
+}
 let hubspotRefreshing = false;
 
 async function fetchHubspotListAll(objectType, properties) {
@@ -289,9 +296,17 @@ async function refreshHubspotCache() {
       ready: true,
       error: null,
     };
+    store.saveHubspot({
+      companies,
+      dealCompanies: [...dealCompanySet],
+      ownerNameByCompany: [...ownerNameByCompany],
+      fetchedAt: hubspotCache.fetchedAt,
+    });
+    responseCache.clear();
     console.log(`[HubSpot] 更新完了: 会社${companies.length}件 / 取引データのある会社${dealCompanySet.size}件`);
   } catch (err) {
-    hubspotCache = { ...hubspotCache, error: String(err.message || err), fetchedAt: Date.now(), ready: true };
+    // 保存済みのデータがあればそのまま使い続ける
+    hubspotCache = { ...hubspotCache, error: String(err.message || err), ready: true };
     console.error('[HubSpot] 更新失敗:', err.message || err);
   } finally {
     hubspotRefreshing = false;
@@ -316,8 +331,18 @@ function checkHubspot(title) {
   return matches;
 }
 
-let cache = { data: null, fetchedAt: 0 };
+// ---------------------------------------------------------------------------
+// ニュースの取得と保存
+// ---------------------------------------------------------------------------
 const CACHE_MS = 5 * 60 * 1000;
+// 誰も見ていなくても記事をためていくため、裏で定期的に取りに行く
+const BACKGROUND_REFRESH_MS = 30 * 60 * 1000;
+const DEFAULT_DAYS = 90;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+let lastFeedErrors = [];
+let lastFetchedAt = 0;
+let refreshing = null;
 
 async function fetchAllFeeds() {
   const results = await Promise.allSettled(
@@ -326,7 +351,6 @@ async function fetchAllFeeds() {
       return (parsed.items || []).map((item) => {
         const { title, source } = cleanSource(item, feed.label);
         const summary = (item.contentSnippet || item.summary || '').slice(0, 400);
-        const hubspotMatches = checkHubspot(title);
         return {
           title,
           link: item.link,
@@ -335,8 +359,6 @@ async function fetchAllFeeds() {
           category: feed.category,
           publishedAt: normalizeDate(item).toISOString(),
           summary,
-          tags: inferTags(title, summary),
-          hubspotMatches,
         };
       });
     })
@@ -360,42 +382,98 @@ async function fetchAllFeeds() {
     return true;
   });
 
-  const groups = new Map();
-  for (const it of deduped) {
-    const key = normalizeTitleKey(it.title);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(it);
-  }
-  const finalItems = [];
-  for (const group of groups.values()) {
-    if (group.length === 1) {
-      finalItems.push(group[0]);
-      continue;
+  return { items: deduped, errors };
+}
+
+function refreshNews() {
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    const { items, errors } = await fetchAllFeeds();
+    const added = store.mergeArticles(items);
+    lastFeedErrors = errors;
+    lastFetchedAt = Date.now();
+    responseCache.clear();
+    console.log(`[ニュース] 取得${items.length}件 / 新規${added}件 / 保存済み${store.listArticles().length}件`);
+  })()
+    .catch((err) => console.error('[ニュース] 取得失敗:', err.message || err))
+    .finally(() => { refreshing = null; });
+  return refreshing;
+}
+
+refreshNews();
+setInterval(refreshNews, BACKGROUND_REFRESH_MS);
+
+// 期間の指定: ?days=7 / ?days=all / ?from=2026-10-01&to=2026-10-31(日本時間の日付)
+function parseRange(query) {
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  if (query.from || query.to) {
+    if ((query.from && !datePattern.test(query.from)) || (query.to && !datePattern.test(query.to))) {
+      return { error: 'from / to は YYYY-MM-DD の形で指定してください' };
     }
-    group.sort((a, b) => Number(a.isPaid) - Number(b.isPaid));
-    finalItems.push(group[0]);
+    return {
+      from: query.from ? Date.parse(`${query.from}T00:00:00+09:00`) : 0,
+      to: query.to ? Date.parse(`${query.to}T23:59:59.999+09:00`) : Infinity,
+    };
   }
+  if (query.days === 'all') return { from: 0, to: Infinity };
+  const days = query.days === undefined ? DEFAULT_DAYS : Number(query.days);
+  if (!Number.isFinite(days) || days <= 0) return { error: 'days は正の数か all で指定してください' };
+  return { from: Date.now() - days * DAY_MS, to: Infinity };
+}
 
-  finalItems.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+function buildNewsResponse(range) {
+  const inRange = store.listArticles().filter((a) => {
+    const t = Date.parse(a.publishedAt);
+    return t >= range.from && t <= range.to;
+  });
 
+  const enriched = inRange.map((a) => ({
+    ...a,
+    tags: inferTags(a.title, a.summary),
+    hubspotMatches: checkHubspot(a.title),
+  }));
+
+  const items = groupSimilar(enriched)
+    .map((it) => ({ ...it, project: detectProject(it) }))
+    .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+
+  const errors = [...lastFeedErrors];
   if (!hubspotCache.ready) {
     errors.push({ feed: 'HubSpot連携', error: '初回データ読み込み中です(裏側で処理中、記事のHubSpot判定は次回反映されます)' });
   } else if (hubspotCache.error) {
     errors.push({ feed: 'HubSpot連携', error: hubspotCache.error });
   }
 
-  return { items: finalItems, tagOrder: TAG_ORDER, errors, fetchedAt: new Date().toISOString() };
+  return {
+    items,
+    tagOrder: TAG_ORDER,
+    errors,
+    fetchedAt: new Date(lastFetchedAt || Date.now()).toISOString(),
+    range: {
+      from: range.from > 0 ? new Date(range.from).toISOString() : null,
+      to: Number.isFinite(range.to) ? new Date(range.to).toISOString() : null,
+    },
+  };
 }
 
 app.get('/api/news', async (req, res) => {
   try {
+    const range = parseRange(req.query);
+    if (range.error) return res.status(400).json({ error: range.error });
+
     const force = req.query.refresh === '1';
-    const isStale = Date.now() - cache.fetchedAt > CACHE_MS;
-    if (!cache.data || isStale || force) {
-      cache.data = await fetchAllFeeds();
-      cache.fetchedAt = Date.now();
+    const isStale = Date.now() - lastFetchedAt > CACHE_MS;
+    // 保存済みの記事があれば待たせずに返し、取り直しは裏で行う
+    if (force || store.listArticles().length === 0) await refreshNews();
+    else if (isStale) refreshNews();
+
+    // days 指定は時刻が毎回ずれるので、10分単位に丸めてキャッシュのキーにする
+    const key = `${Math.floor(range.from / 600000)}-${range.to}`;
+    if (!responseCache.has(key)) {
+      if (responseCache.size >= 10) responseCache.delete(responseCache.keys().next().value);
+      responseCache.set(key, buildNewsResponse(range));
     }
-    res.json(cache.data);
+    res.json(responseCache.get(key));
   } catch (err) {
     res.status(500).json({ error: String(err.message || err) });
   }

@@ -19,6 +19,11 @@
         <p class="topbar__sub">物流 &amp; 製造業 業界ニュース モニタリング</p>
       </div>
     </div>
+    <nav class="views" id="views">
+      <a class="view-link is-active" href="#news" data-view="news">ニュース</a>
+      <a class="view-link" href="#projects" data-view="projects">新設・増設案件</a>
+      <a class="view-link" href="#competitors" data-view="competitors">競合の動き</a>
+    </nav>
     <div class="topbar__meta">
       <div class="clock" id="clock">--:--:--</div>
       <button class="scan-btn" id="refreshBtn">
@@ -29,29 +34,77 @@
 
   <div class="status-bar" id="statusBar">読み込み中...</div>
 
-  <div class="toolbar-row">
+  <div class="toolbar-row" id="newsToolbar">
     <nav class="tabs" id="tabs">
       <button class="tab is-active" data-filter="all">すべて</button>
       <button class="tab" data-filter="logistics">物流</button>
       <button class="tab" data-filter="manufacturing">製造業</button>
       <button class="tab" data-filter="topic">注目トピック</button>
       <button class="tab" data-filter="thailand">タイ市場</button>
+      <button class="tab" data-filter="favorites">★ お気に入り</button>
     </nav>
-    <input type="text" id="searchInput" class="search-input" placeholder="キーワードで検索(例: ダイフク、決算、AGV...)" />
+    <div class="toolbar-controls">
+      <select id="periodSelect" class="select" aria-label="期間">
+        <option value="1">今日</option>
+        <option value="7" selected>直近7日</option>
+        <option value="30">直近30日</option>
+        <option value="90">直近90日</option>
+      </select>
+      <label class="check"><input type="checkbox" id="unreadOnly" /> 未読のみ</label>
+      <input type="text" id="searchInput" class="search-input" placeholder="キーワードで検索(例: ダイフク、決算、AGV...)" />
+    </div>
   </div>
 
   <div class="tagbar" id="tagbar"></div>
 </div>
 
-<main id="list" class="list">
-  <!-- 記事カードはJSで挿入 -->
-</main>
+<section id="newsView">
+  <main id="list" class="list">
+    <!-- 記事カードはJSで挿入 -->
+  </main>
+  <div class="empty" id="emptyState" hidden>該当するニュースが見つかりません。フィルタや検索キーワードを変えてお試しください。</div>
+</section>
 
-<div class="empty" id="emptyState" hidden>該当するニュースが見つかりません。フィルタや検索キーワードを変えてお試しください。</div>
+<section id="projectsView" class="page" hidden>
+  <div class="page__head">
+    <h2>新設・増設案件</h2>
+    <p class="page__note">記事のタイトルから自動で抜き出した一覧です(直近90日)。会社名・場所・時期は機械的に読み取っているため、空欄や誤りがあります。必ず元の記事で確認してください。</p>
+    <div class="toolbar-controls">
+      <select id="projectKind" class="select" aria-label="種類">
+        <option value="">すべての種類</option>
+        <option>新設</option>
+        <option>増設</option>
+        <option>着工</option>
+        <option>竣工・稼働</option>
+        <option>移転</option>
+      </select>
+      <input type="text" id="projectSearch" class="search-input" placeholder="会社名・場所・用途で絞り込み" />
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>日付</th><th>種類</th><th>会社</th><th>場所</th><th>用途</th><th>時期</th><th>記事</th></tr>
+      </thead>
+      <tbody id="projectRows"></tbody>
+    </table>
+  </div>
+  <div class="empty" id="projectEmpty" hidden>該当する案件がありません。</div>
+</section>
+
+<section id="competitorsView" class="page" hidden>
+  <div class="page__head">
+    <h2>競合の動き</h2>
+    <p class="page__note">競合7社の記事数を週ごとに数えています(直近12週)。棒にマウスを合わせると、その週の件数が出ます。データは毎日たまっていくため、使い始めの時期は件数が少なめに出ます。</p>
+  </div>
+  <div id="competitorGrid" class="competitor-grid"></div>
+</section>
 
 <footer class="footer">
-  <p>ソース: Googleニュース検索フィード + MONOist。5分ごとにキャッシュ更新。フィード構成は server.js の FEEDS 配列で編集できます。</p>
+  <p>ソース: Googleニュース検索フィード + MONOist。30分ごとに自動で取得し、記事はサーバーに保存されます。お気に入り・既読・メモは、このブラウザだけに保存されます。</p>
 </footer>
+
+<div class="tooltip" id="tooltip" role="tooltip" hidden></div>
 
 <script src="/app.js"></script>
 </body>
