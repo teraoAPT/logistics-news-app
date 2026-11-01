@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 const Parser = require('rss-parser');
 const path = require('path');
@@ -6,6 +7,7 @@ const { toHalfWidth } = require('./lib/text');
 const { groupSimilar } = require('./lib/dedupe');
 const { detectProject } = require('./lib/projects');
 const { fetchPreview } = require('./lib/preview');
+const comments = require('./lib/comments');
 
 const app = express();
 const parser = new Parser({
@@ -15,6 +17,61 @@ const parser = new Parser({
 
 const PORT = process.env.PORT || 3000;
 const HUBSPOT_TOKEN = process.env.HUBSPOT_TOKEN;
+
+// ---------------------------------------------------------------------------
+// パスワード(Basic認証)。SITE_USER と SITE_PASSWORD の両方が設定されているときだけ有効
+// ---------------------------------------------------------------------------
+const SITE_USER = process.env.SITE_USER || '';
+const SITE_PASSWORD = process.env.SITE_PASSWORD || '';
+const AUTH_ENABLED = Boolean(SITE_USER && SITE_PASSWORD);
+// パスワードなしで公開している本番では、だれでも書き込めてしまうのでコメントを受け付けない
+const COMMENTS_ENABLED = AUTH_ENABLED || !process.env.RENDER;
+
+const AUTH_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_MAX_FAILURES = 20;
+const authFailures = new Map();
+
+function safeEqual(a, b) {
+  const ha = crypto.createHash('sha256').update(a).digest();
+  const hb = crypto.createHash('sha256').update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+function checkCredentials(header) {
+  const m = /^Basic (.+)$/.exec(header || '');
+  if (!m) return false;
+  const decoded = Buffer.from(m[1], 'base64').toString('utf8');
+  const i = decoded.indexOf(':');
+  if (i < 0) return false;
+  // 両方を必ず比べて、どちらが違うかで応答時間が変わらないようにする
+  const userOk = safeEqual(decoded.slice(0, i), SITE_USER);
+  const passOk = safeEqual(decoded.slice(i + 1), SITE_PASSWORD);
+  return userOk && passOk;
+}
+
+app.set('trust proxy', 1);
+app.use((req, res, next) => {
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  if (!AUTH_ENABLED) return next();
+
+  const now = Date.now();
+  const prev = authFailures.get(req.ip);
+  if (prev && now - prev.since > AUTH_WINDOW_MS) authFailures.delete(req.ip);
+  const failures = authFailures.get(req.ip);
+  if (failures && failures.count >= AUTH_MAX_FAILURES) {
+    return res.status(429).send('ログインの失敗が続いたため、しばらく受け付けません。15分ほどしてからお試しください。');
+  }
+
+  if (checkCredentials(req.headers.authorization)) return next();
+
+  if (req.headers.authorization) {
+    if (failures) failures.count++;
+    else authFailures.set(req.ip, { count: 1, since: now });
+  }
+  res.set('WWW-Authenticate', 'Basic realm="LOGI/MONO WATCH", charset="UTF-8"');
+  res.status(401).send('ログインが必要です');
+});
+console.log(AUTH_ENABLED ? '[ログイン] パスワード保護あり' : '[ログイン] パスワード保護なし(SITE_USER / SITE_PASSWORD が未設定)');
 
 // /api/news の返答を期間ごとに覚えておく。記事や HubSpot が更新されたら消す
 const responseCache = new Map();
@@ -62,6 +119,11 @@ const FEEDS = [
   { url: googleNewsFeed('AIエージェント OR 大規模言語モデル OR LLM'), category: 'ai', label: 'Googleニュース: AIエージェント/LLM' },
   { url: googleNewsFeed('人工知能 OR AI規制 OR AI投資 OR AIデータセンター'), category: 'ai', label: 'Googleニュース: AI全般' },
 
+  // 補助金・公募(設備投資・自動化の提案のきっかけ)
+  { url: googleNewsFeed('物流 補助金 OR 物流効率化 補助金 OR 倉庫 補助金 OR 物流 公募'), category: 'subsidy', label: 'Googleニュース: 物流の補助金' },
+  { url: googleNewsFeed('省力化投資補助金 OR ものづくり補助金 OR 中小企業省力化 OR 事業再構築補助金'), category: 'subsidy', label: 'Googleニュース: 省力化・ものづくり補助金' },
+  { url: googleNewsFeed('(自動化 OR 設備投資 OR DX OR 脱炭素) 補助金 (公募 OR 募集 OR 申請)'), category: 'subsidy', label: 'Googleニュース: 設備投資の補助金' },
+
   // タイ市場(APTのタイ拠点拡大に伴う情報収集)
   { url: googleNewsFeed('タイ 物流 OR タイ ロジスティクス'), category: 'thailand', label: 'Googleニュース: タイ物流' },
   { url: googleNewsFeed('タイ 進出 OR タイ 工場 OR タイ 生産拠点'), category: 'thailand', label: 'Googleニュース: タイ進出' },
@@ -72,6 +134,7 @@ const FEEDS = [
 const TAG_ORDER = [
   'AI',
   '半導体',
+  '補助金・公募',
   '人手不足/2024年問題',
   '自動倉庫',
   'DX/スマート工場',
@@ -94,6 +157,7 @@ const TAG_ORDER = [
 const TOPIC_TAGS = [
   { tag: 'AI', re: /(?<![A-Za-z])(?:AI|Ai|LLM|ChatGPT|OpenAI|Claude|Anthropic|Gemini|Copilot|DeepMind|DeepSeek|Grok|xAI|Perplexity|Mistral)(?![A-Za-z])|人工知能|大規模言語モデル|アントロピック|オープンAI|ディープシーク|エージェンティック/ },
   { tag: '半導体', re: /半導体|(?<![A-Za-z])(?:TSMC|Rapidus|DRAM|NAND|HBM|NVIDIA|Nvidia|ASML)(?![A-Za-z])|ラピダス|エヌビディア|ウエハー|ウェハー|ファウンドリ/ },
+  { tag: '補助金・公募', words: ['補助金', '助成金', '公募'] },
   { tag: '自動倉庫', words: ['自動倉庫', 'スタッカークレーン', '自動化倉庫'] },
   { tag: 'AMR/AGV/AGF', words: ['AMR', 'AGV', 'AGF', '自律走行搬送', '無人搬送'] },
   { tag: 'WMS/WCS/WES', words: ['WMS', 'WCS', 'WES', '倉庫管理システム'] },
@@ -237,7 +301,22 @@ async function fetchWithRetry(url, options, retries = 5) {
   return fetch(url, options);
 }
 
-let hubspotCache = { companies: [], dealCompanySet: new Set(), ownerNameByCompany: new Map(), fetchedAt: 0, ready: false };
+let hubspotCache = {
+  companies: [], dealCompanySet: new Set(), ownerNameByCompany: new Map(), stageByCompany: new Map(), stageLabels: {},
+  fetchedAt: 0, ready: false,
+};
+
+// HubSpot から名前を取れなかったときに使う、標準のライフサイクルステージの日本語名
+const DEFAULT_STAGE_LABELS = {
+  subscriber: '購読者',
+  lead: 'リード',
+  marketingqualifiedlead: 'MQL',
+  salesqualifiedlead: 'SQL',
+  opportunity: '商談',
+  customer: '顧客',
+  evangelist: 'エバンジェリスト',
+  other: 'その他',
+};
 const HUBSPOT_REFRESH_MS = 60 * 60 * 1000;
 
 // 前回保存した HubSpot のデータがあれば、起動直後から印を出せるように読み込む
@@ -247,6 +326,8 @@ if (savedHubspot) {
     companies: withMatchers(savedHubspot.companies || []),
     dealCompanySet: new Set(savedHubspot.dealCompanies || []),
     ownerNameByCompany: new Map(savedHubspot.ownerNameByCompany || []),
+    stageByCompany: new Map(savedHubspot.stageByCompany || []),
+    stageLabels: savedHubspot.stageLabels || {},
     fetchedAt: savedHubspot.fetchedAt || 0,
     ready: true,
     error: null,
@@ -305,6 +386,21 @@ async function fetchOwnersMap() {
   return ownerMap;
 }
 
+// ライフサイクルステージの表示名(独自の段階を作っている場合もあるので HubSpot から取る)
+async function fetchStageLabels() {
+  try {
+    const res = await fetchWithRetry('https://api.hubapi.com/crm/v3/properties/companies/lifecyclestage', {
+      headers: { Authorization: `Bearer ${HUBSPOT_TOKEN}` },
+    });
+    if (!res.ok) return {};
+    const data = await res.json();
+    return Object.fromEntries((data.options || []).map((o) => [o.value, o.label]));
+  } catch (err) {
+    console.error('[HubSpot] ステージ名の取得失敗(標準の名前で継続):', err.message || err);
+    return {};
+  }
+}
+
 async function refreshHubspotCache() {
   if (hubspotRefreshing) return;
   hubspotRefreshing = true;
@@ -313,10 +409,11 @@ async function refreshHubspotCache() {
       hubspotCache = { ...hubspotCache, error: 'HUBSPOT_TOKEN未設定', ready: true, fetchedAt: Date.now() };
       return;
     }
-    const [companiesRaw, dealsRaw, ownersMap] = await Promise.all([
-      fetchHubspotListAll('companies', ['name', 'hubspot_owner_id']),
+    const [companiesRaw, dealsRaw, ownersMap, stageLabels] = await Promise.all([
+      fetchHubspotListAll('companies', ['name', 'hubspot_owner_id', 'lifecyclestage']),
       fetchHubspotListAll('deals', ['dealname']),
       fetchOwnersMap(),
+      fetchStageLabels(),
     ]);
 
     const dealCompanySet = new Set();
@@ -347,6 +444,7 @@ async function refreshHubspotCache() {
 
     const seen = new Map();
     const ownerNameByCompany = new Map();
+    const stageByCompany = new Map();
     for (const c of companiesRaw) {
       const displayName = (c.properties?.name || '').trim();
       const norm = normalizeCompanyName(displayName);
@@ -357,6 +455,8 @@ async function refreshHubspotCache() {
       if (ownerId && ownersMap.has(String(ownerId)) && !ownerNameByCompany.has(norm)) {
         ownerNameByCompany.set(norm, ownersMap.get(String(ownerId)));
       }
+      const stage = c.properties?.lifecyclestage;
+      if (stage && !stageByCompany.has(norm)) stageByCompany.set(norm, stage);
     }
     const companies = [...seen.entries()].map(([normalized, name]) => ({ normalized, name }));
 
@@ -364,6 +464,8 @@ async function refreshHubspotCache() {
       companies: withMatchers(companies),
       dealCompanySet,
       ownerNameByCompany,
+      stageByCompany,
+      stageLabels,
       fetchedAt: Date.now(),
       totalRaw: companiesRaw.length,
       ready: true,
@@ -373,6 +475,8 @@ async function refreshHubspotCache() {
       companies,
       dealCompanies: [...dealCompanySet],
       ownerNameByCompany: [...ownerNameByCompany],
+      stageByCompany: [...stageByCompany],
+      stageLabels,
       fetchedAt: hubspotCache.fetchedAt,
     });
     responseCache.clear();
@@ -395,10 +499,13 @@ function checkHubspot(title) {
   const matches = [];
   for (const c of hubspotCache.companies) {
     if (matchCompanyInText(text, compactText, c.matcher)) {
+      const stage = hubspotCache.stageByCompany.get(c.normalized) || null;
       matches.push({
         name: c.name,
         hasDeal: hubspotCache.dealCompanySet.has(c.normalized),
         ownerName: hubspotCache.ownerNameByCompany.get(c.normalized) || null,
+        stage,
+        stageLabel: stage ? (hubspotCache.stageLabels[stage] || DEFAULT_STAGE_LABELS[stage] || stage) : null,
       });
     }
   }
@@ -580,6 +687,35 @@ app.get('/api/preview', async (req, res) => {
       .finally(() => previewInFlight.delete(link)));
   }
   res.json(await previewInFlight.get(link));
+});
+
+// ---------------------------------------------------------------------------
+// チームのコメント(記事ごとに、名前つきで残す)
+// ---------------------------------------------------------------------------
+app.get('/api/comments', (req, res) => {
+  res.json({ enabled: COMMENTS_ENABLED, comments: comments.listAll() });
+});
+
+// 別のサイトから勝手に書き込まれないよう、JSON で送られたものだけを受け付ける
+function requireJson(req, res, next) {
+  if (!req.is('application/json')) return res.status(415).json({ error: 'JSON で送ってください' });
+  if (!COMMENTS_ENABLED) return res.status(403).json({ error: 'パスワードを設定するまで、コメントは使えません' });
+  next();
+}
+
+app.post('/api/comments', requireJson, express.json({ limit: '10kb' }), (req, res) => {
+  const { link, author, text } = req.body || {};
+  if (typeof link !== 'string' || !store.hasArticle(link)) return res.status(404).json({ error: '記事が見つかりません' });
+  const name = String(author || '').trim().slice(0, 40);
+  const body = String(text || '').trim().slice(0, 1000);
+  if (!name) return res.status(400).json({ error: '名前を入れてください' });
+  if (!body) return res.status(400).json({ error: 'コメントが空です' });
+  res.json({ comments: comments.add(link, name, body) });
+});
+
+app.delete('/api/comments', requireJson, express.json({ limit: '10kb' }), (req, res) => {
+  const { link, id } = req.body || {};
+  res.json({ comments: comments.remove(String(link || ''), String(id || '')) });
 });
 
 app.use(express.static(path.join(__dirname, 'public')));

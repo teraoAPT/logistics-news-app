@@ -3,7 +3,14 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<meta name="theme-color" content="#1B1D1F" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="LOGI WATCH" />
 <title>LOGI/MONO WATCH — 物流・製造業ニュース</title>
+<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
+<link rel="icon" type="image/png" href="/icon-192.png" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css" />
@@ -21,11 +28,17 @@
     </div>
     <nav class="views" id="views">
       <a class="view-link is-active" href="#news" data-view="news">ニュース</a>
+      <a class="view-link" href="#accounts" data-view="accounts">お客様の動き</a>
+      <a class="view-link" href="#prospects" data-view="prospects">新規開拓候補</a>
       <a class="view-link" href="#projects" data-view="projects">新設・増設案件</a>
+      <a class="view-link" href="#map" data-view="map">案件地図</a>
       <a class="view-link" href="#competitors" data-view="competitors">競合の動き</a>
+      <a class="view-link" href="#trends" data-view="trends">トレンド</a>
+      <a class="view-link" href="#weekly" data-view="weekly">週報</a>
     </nav>
     <div class="topbar__meta">
       <div class="clock" id="clock">--:--:--</div>
+      <button class="icon-btn" id="settingsBtn" type="button" title="設定(ウォッチワード・ミュート・名前)">⚙ 設定</button>
       <button class="scan-btn" id="refreshBtn">
         <span class="scan-btn__icon">↻</span> 再スキャン
       </button>
@@ -41,6 +54,7 @@
       <button class="tab" data-filter="manufacturing">製造業</button>
       <button class="tab" data-filter="topic">注目トピック</button>
       <button class="tab" data-filter="thailand">タイ市場</button>
+      <button class="tab" data-filter="subsidy">補助金・公募</button>
       <button class="tab" data-filter="ai">AI</button>
       <button class="tab" data-filter="favorites">★ お気に入り</button>
     </nav>
@@ -51,8 +65,12 @@
         <option value="30">直近30日</option>
         <option value="90">直近90日</option>
       </select>
+      <select id="hubspotFilter" class="select" aria-label="HubSpotで絞り込み"></select>
+      <select id="ownerFilter" class="select" aria-label="担当者で絞り込み"></select>
+      <label class="check"><input type="checkbox" id="newOnly" /> NEWのみ</label>
       <label class="check"><input type="checkbox" id="unreadOnly" /> 未読のみ</label>
       <input type="text" id="searchInput" class="search-input" placeholder="キーワードで検索(例: ダイフク、決算、AGV...)" />
+      <button type="button" class="action-btn" id="newsCsvBtn">CSVで書き出す</button>
     </div>
   </div>
 
@@ -64,6 +82,52 @@
     <!-- 記事カードはJSで挿入 -->
   </main>
   <div class="empty" id="emptyState" hidden>該当するニュースが見つかりません。フィルタや検索キーワードを変えてお試しください。</div>
+</section>
+
+<section id="accountsView" class="page" hidden>
+  <div class="page__head">
+    <h2>お客様の動き</h2>
+    <p class="page__note">HubSpot に登録のある会社が出てきた記事を、会社ごとにまとめています(直近90日)。会社名の一致は機械的に判定しているため、同じ名前の別の会社が混ざることがあります。</p>
+    <div class="toolbar-controls">
+      <select id="accountStage" class="select" aria-label="段階"></select>
+      <select id="accountOwner" class="select" aria-label="担当者"></select>
+      <select id="accountSort" class="select" aria-label="並べ方">
+        <option value="latest">新しい記事の順</option>
+        <option value="count">記事の多い順</option>
+      </select>
+      <input type="text" id="accountSearch" class="search-input" placeholder="会社名で絞り込み" />
+    </div>
+  </div>
+  <div id="accountGrid" class="competitor-grid"></div>
+  <div class="empty" id="accountEmpty" hidden>該当する会社がありません。</div>
+</section>
+
+<section id="prospectsView" class="page" hidden>
+  <div class="page__head">
+    <h2>新規開拓候補</h2>
+    <p class="page__note">新設・増設などの案件記事に出てくる会社のうち、HubSpot に登録が見つからない会社です(直近90日)。会社名は見出しの先頭から機械的に読み取っているため、会社名でないものが混ざることがあります。CSV は HubSpot への取り込みにも使えます。</p>
+    <div class="toolbar-controls">
+      <select id="prospectKind" class="select" aria-label="種類">
+        <option value="">すべての種類</option>
+        <option>新設</option>
+        <option>増設</option>
+        <option>着工</option>
+        <option>竣工・稼働</option>
+        <option>移転</option>
+      </select>
+      <input type="text" id="prospectSearch" class="search-input" placeholder="会社名・場所・用途で絞り込み" />
+      <button type="button" class="action-btn" id="prospectCsvBtn">CSVで書き出す</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>会社</th><th>件数</th><th>最新</th><th>種類</th><th>場所</th><th>用途</th><th>最新の記事</th></tr>
+      </thead>
+      <tbody id="prospectRows"></tbody>
+    </table>
+  </div>
+  <div class="empty" id="prospectEmpty" hidden>該当する会社がありません。</div>
 </section>
 
 <section id="projectsView" class="page" hidden>
@@ -80,17 +144,47 @@
         <option>移転</option>
       </select>
       <input type="text" id="projectSearch" class="search-input" placeholder="会社名・場所・用途で絞り込み" />
+      <label class="check"><input type="checkbox" id="projectChanceOnly" /> 商談チャンスのみ</label>
+      <label class="check"><input type="checkbox" id="projectByCompany" /> 会社ごとの流れで見る</label>
+      <button type="button" class="action-btn" id="projectCsvBtn">CSVで書き出す</button>
     </div>
   </div>
-  <div class="table-wrap">
+  <div class="table-wrap" id="projectTableWrap">
     <table class="data-table">
       <thead>
-        <tr><th>日付</th><th>種類</th><th>会社</th><th>場所</th><th>用途</th><th>時期</th><th>記事</th></tr>
+        <tr><th>日付</th><th>種類</th><th>会社</th><th>場所</th><th>用途</th><th>時期</th><th>HubSpot</th><th>記事</th></tr>
       </thead>
       <tbody id="projectRows"></tbody>
     </table>
   </div>
+  <div id="projectTimeline" class="timeline" hidden></div>
   <div class="empty" id="projectEmpty" hidden>該当する案件がありません。</div>
+</section>
+
+<section id="mapView" class="page" hidden>
+  <div class="page__head">
+    <h2>案件地図</h2>
+    <p class="page__note">新設・増設案件を都道府県ごとに地図に置いています。円が大きいほど案件が多い県です。円を押すと記事の一覧が出ます。場所は見出しから機械的に読み取っているため、市の名前だけで県が分からない案件は地図に置けません(下の一覧に出します)。</p>
+    <div class="toolbar-controls">
+      <select id="mapKind" class="select" aria-label="種類">
+        <option value="">すべての種類</option>
+        <option>新設</option>
+        <option>増設</option>
+        <option>着工</option>
+        <option>竣工・稼働</option>
+        <option>移転</option>
+      </select>
+      <select id="mapPeriod" class="select" aria-label="期間">
+        <option value="30">直近30日</option>
+        <option value="90" selected>直近90日</option>
+      </select>
+    </div>
+  </div>
+  <div id="mapCanvas" class="map-canvas"></div>
+  <div class="map-side">
+    <div id="mapOverseas"></div>
+    <div id="mapUnplaced"></div>
+  </div>
 </section>
 
 <section id="competitorsView" class="page" hidden>
@@ -101,9 +195,93 @@
   <div id="competitorGrid" class="competitor-grid"></div>
 </section>
 
+<section id="trendsView" class="page" hidden>
+  <div class="page__head">
+    <h2>トレンド</h2>
+    <p class="page__note">話題(タグ)ごとの記事数を週ごとに数えています(直近12週)。グラフの高さは話題ごとの最大の週に合わせています。下の「急上昇ワード」は、見出しに出てくる言葉のうち、直近7日に前の4週間より急に増えたものです(言葉は機械的に切り出しています)。</p>
+    <div class="toolbar-controls">
+      <select id="trendCategory" class="select" aria-label="対象">
+        <option value="noai">AI以外のすべて</option>
+        <option value="logistics">物流</option>
+        <option value="manufacturing">製造業</option>
+        <option value="ai">AI</option>
+        <option value="subsidy">補助金・公募</option>
+      </select>
+    </div>
+  </div>
+  <div id="trendGrid" class="competitor-grid"></div>
+  <h3 class="section-title">急上昇ワード</h3>
+  <p class="page__note" id="risingNote" hidden>※ 記事をためはじめて日が浅く、比べる元になる前の4週間の記事がまだ少ないため、「新しく登場」が多めに出ます。1か月ほどたつと落ち着きます。</p>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>言葉</th><th>直近7日</th><th>その前4週の週平均</th><th>伸び</th><th>例</th></tr>
+      </thead>
+      <tbody id="risingRows"></tbody>
+    </table>
+  </div>
+  <div class="empty" id="risingEmpty" hidden>急に増えた言葉はまだありません。データがたまると出てきます。</div>
+</section>
+
+<section id="weeklyView" class="page" hidden>
+  <div class="page__head">
+    <h2>週報</h2>
+    <p class="page__note">1週間の動きを1枚にまとめたページです。AI は使わず、件数と見出しから組み立てています。印刷するか、テキストをコピーしてメールやチャットに貼り付けて使えます。</p>
+    <div class="toolbar-controls no-print">
+      <select id="weeklyRange" class="select" aria-label="対象の週">
+        <option value="recent">直近7日</option>
+        <option value="last">先週(月〜日)</option>
+        <option value="prev">先々週(月〜日)</option>
+      </select>
+      <button type="button" class="action-btn" id="weeklyPrintBtn">印刷する</button>
+      <button type="button" class="action-btn" id="weeklyCopyBtn">テキストをコピー</button>
+      <span class="muted" id="weeklyCopyMsg"></span>
+    </div>
+  </div>
+  <div id="weeklyBody" class="weekly"></div>
+</section>
+
 <footer class="footer">
-  <p>ソース: Googleニュース検索フィード + MONOist。30分ごとに自動で取得し、記事はサーバーに保存されます。お気に入り・既読・メモは、このブラウザだけに保存されます。</p>
+  <p>ソース: Googleニュース検索フィード + MONOist。30分ごとに自動で取得し、記事はサーバーに保存されます。お気に入り・既読・自分用メモ・設定は、このブラウザだけに保存されます。チームのコメントはサーバーに保存され、皆で見られます。キーボード: J / K で移動、Enter で開く、F でお気に入り、C でメモ、/ で検索、? で操作の一覧。</p>
 </footer>
+
+<dialog id="settingsDialog" class="dialog">
+  <form method="dialog" id="settingsForm">
+    <h2>設定</h2>
+    <p class="dialog__note">ここでの設定は、このブラウザだけに保存されます。</p>
+    <label class="field">
+      <span>あなたの名前(チームのコメントに表示)</span>
+      <input type="text" id="settingName" maxlength="40" placeholder="例: 寺尾" />
+    </label>
+    <label class="field">
+      <span>ウォッチワード(1行に1つ。出てきた記事を上に出して色を付けます)</span>
+      <textarea id="settingWatch" rows="4" placeholder="例:&#10;冷凍倉庫&#10;マテハン"></textarea>
+    </label>
+    <label class="field">
+      <span>ミュートする言葉(1行に1つ。見出しに入っている記事を出しません)</span>
+      <textarea id="settingMuteWords" rows="3"></textarea>
+    </label>
+    <label class="field">
+      <span>ミュートする媒体(1行に1つ。記事カードの「媒体をミュート」でも追加できます)</span>
+      <textarea id="settingMuteSources" rows="3"></textarea>
+    </label>
+    <details class="dialog__help" id="keyHelp">
+      <summary>キーボード操作</summary>
+      <ul>
+        <li><kbd>J</kbd> / <kbd>K</kbd> 次の記事 / 前の記事</li>
+        <li><kbd>Enter</kbd> または <kbd>O</kbd> 記事を開く</li>
+        <li><kbd>F</kbd> お気に入りの切り替え</li>
+        <li><kbd>C</kbd> メモ・コメント欄を開く</li>
+        <li><kbd>/</kbd> 検索欄へ</li>
+        <li><kbd>?</kbd> この一覧を開く</li>
+      </ul>
+    </details>
+    <div class="dialog__actions">
+      <button type="submit" value="cancel" class="action-btn">閉じる</button>
+      <button type="submit" value="save" class="scan-btn">保存</button>
+    </div>
+  </form>
+</dialog>
 
 <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
 

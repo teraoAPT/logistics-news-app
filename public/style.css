@@ -15,6 +15,10 @@
   --thailand-bg: #EFE0F5;
   --ai: #0E7C66;
   --ai-bg: #DCF1EC;
+  --subsidy: #5A6B12;
+  --subsidy-bg: #EAF0D2;
+  --chance: #B42318;
+  --chance-bg: #FDE7E4;
   --safety-yellow: #E3A400;
   --focus: #2F5D82;
   --paid: #8A2E2E;
@@ -246,6 +250,7 @@ a { color: inherit; }
 .card__stripe.topic { background: var(--topic); }
 .card__stripe.thailand { background: var(--thailand); }
 .card__stripe.ai { background: var(--ai); }
+.card__stripe.subsidy { background: var(--subsidy); }
 
 .card__body {
   padding: 14px 16px;
@@ -278,6 +283,7 @@ a { color: inherit; }
 .card__category-label.topic { color: var(--topic); background: var(--topic-bg); }
 .card__category-label.thailand { color: var(--thailand); background: var(--thailand-bg); }
 .card__category-label.ai { color: var(--ai); background: var(--ai-bg); }
+.card__category-label.subsidy { color: var(--subsidy); background: var(--subsidy-bg); }
 
 .paid-badge {
   font-weight: 700;
@@ -665,4 +671,250 @@ a { color: inherit; }
   .topbar h1 { font-size: 14px; }
   .toolbar-row, .tagbar, .list, .page { padding-left: 16px; padding-right: 16px; }
   .status-bar { padding: 5px 16px; }
+}
+
+/* ---------- 設定ボタン ---------- */
+.icon-btn {
+  font-size: 12px;
+  font-weight: 700;
+  background: transparent;
+  color: #B7BAB4;
+  border: 1px solid #4A4D50;
+  padding: 6px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.icon-btn:hover { color: #F4F4F2; border-color: #B7BAB4; }
+
+/* ---------- NEW・商談チャンス・ウォッチ ---------- */
+.new-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--safety-yellow);
+  padding: 1px 6px;
+  border-radius: 2px;
+}
+.chance-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--chance);
+  background: var(--chance-bg);
+  padding: 1px 6px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.watch-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--thailand);
+  background: var(--thailand-bg);
+  padding: 1px 6px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.card.is-watch { border-color: var(--thailand); box-shadow: inset 0 0 0 1px var(--thailand); }
+.card.is-focused { outline: 3px solid var(--focus); outline-offset: -3px; }
+.data-table tr.is-chance td { background: #FFF6F4; }
+.competitor.has-chance { border-left: 4px solid var(--chance); }
+
+/* ---------- メモ・コメント ---------- */
+.card__note-head {
+  margin: 8px 0 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.card__note-head:first-child { margin-top: 0; }
+.card__note input[type="text"] {
+  width: 100%;
+  font-size: 13px;
+  padding: 5px 8px;
+  margin-bottom: 6px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 3px;
+}
+.card__note .action-btn { margin-top: 4px; }
+.card__comment-preview {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  background: var(--logistics-bg);
+  padding: 4px 8px;
+  border-radius: 3px;
+  white-space: pre-wrap;
+}
+.comments {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  font-size: 12.5px;
+}
+.comments li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.comment__author { font-weight: 700; margin-right: 6px; }
+.comment__text { white-space: pre-wrap; margin-top: 2px; }
+.comment__del {
+  float: right;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+}
+.comment__del:hover { color: var(--chance); }
+.comment-empty { font-size: 12px; margin: 0 0 6px; }
+.comment__msg { font-size: 12px; margin-left: 6px; }
+
+/* ---------- 案件の流れ ---------- */
+.timeline { display: grid; gap: 10px; }
+.timeline__company {
+  background: var(--panel);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 4px;
+  padding: 12px 16px;
+}
+.timeline__company h3 { margin: 0 0 6px; font-size: 14.5px; }
+.timeline__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 14px;
+  border-left: 2px solid var(--hairline-strong);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.timeline__list li { margin-bottom: 4px; }
+.timeline__list a { color: var(--ink); }
+.timeline__date {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-right: 4px;
+}
+
+/* ---------- 地図 ---------- */
+.map-canvas {
+  height: 560px;
+  background: var(--panel);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 4px;
+}
+.map-side { margin-top: 12px; display: grid; gap: 8px; }
+.map-group {
+  background: var(--panel);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.map-group summary { cursor: pointer; }
+.map-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.map-list li { margin-bottom: 4px; }
+.map-list a { color: var(--ink); }
+.leaflet-popup-content { max-height: 280px; overflow-y: auto; }
+
+/* ---------- トレンド ---------- */
+.section-title { margin: 24px 0 8px; font-size: 15px; }
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--logistics);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* ---------- 週報 ---------- */
+.weekly {
+  background: var(--panel);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 4px;
+  padding: 16px 20px;
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+.weekly__title { margin: 0 0 8px; font-size: 16px; }
+.weekly__section { margin-top: 14px; }
+.weekly__section h4 {
+  margin: 0 0 4px;
+  font-size: 13.5px;
+  border-left: 4px solid var(--safety-yellow);
+  padding-left: 8px;
+}
+.weekly__section p { margin: 0; }
+.weekly__list { margin: 0; padding-left: 18px; }
+.weekly__list a { color: var(--ink); }
+
+/* ---------- 設定ダイアログ ---------- */
+.dialog {
+  width: min(520px, calc(100vw - 32px));
+  border: 1px solid var(--hairline-strong);
+  border-top: 3px solid var(--safety-yellow);
+  border-radius: 4px;
+  padding: 18px 20px;
+  background: var(--panel);
+  color: var(--ink);
+}
+.dialog::backdrop { background: rgba(0,0,0,0.35); }
+.dialog h2 { margin: 0 0 4px; font-size: 17px; }
+.dialog__note { margin: 0 0 12px; font-size: 12px; color: var(--muted); }
+.field { display: block; margin-bottom: 12px; font-size: 12.5px; }
+.field span { display: block; margin-bottom: 4px; font-weight: 700; }
+.field input, .field textarea {
+  width: 100%;
+  font-family: 'Noto Sans JP', sans-serif;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 3px;
+}
+.dialog__help { font-size: 12.5px; margin-bottom: 12px; }
+.dialog__help summary { cursor: pointer; font-weight: 700; }
+.dialog__help ul { margin: 6px 0 0; padding-left: 18px; line-height: 1.9; }
+kbd {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  border: 1px solid var(--hairline-strong);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 0 5px;
+  background: #F4F5F2;
+}
+.dialog__actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+@media (max-width: 560px) {
+  .map-canvas { height: 420px; }
+  .weekly { padding: 12px 14px; }
+}
+
+/* ---------- 印刷(週報) ---------- */
+@media print {
+  .app-header, .footer, .no-print, .page__note, .preview, .tooltip { display: none !important; }
+  body { background: #fff; }
+  .page { padding: 0; max-width: none; }
+  .weekly { border: none; padding: 0; }
+  .weekly a { text-decoration: none; }
+}
+
+/* スマホでは見出し部分が画面を埋めないよう、固定をやめてページ切り替えを横スクロール1行にする */
+@media (max-width: 700px) {
+  .app-header { position: static; }
+  .views {
+    order: 3;
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .view-link { white-space: nowrap; }
 }
