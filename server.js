@@ -49,6 +49,19 @@ const FEEDS = [
   { url: googleNewsFeed('豊田自動織機'), category: 'topic', label: 'Googleニュース: 豊田自動織機' },
   { url: googleNewsFeed('住友重機械工業 物流 OR 住友重機械工業 搬送'), category: 'topic', label: 'Googleニュース: 住友重機械工業' },
 
+  // 半導体(業界を問わず)
+  { url: googleNewsFeed(`半導体 (工場 OR 投資 OR 増産 OR 供給 OR 装置) ${NOISE_EXCLUDE}`), category: 'manufacturing', label: 'Googleニュース: 半導体' },
+  { url: googleNewsFeed('TSMC OR ラピダス OR Rapidus OR 半導体メーカー'), category: 'manufacturing', label: 'Googleニュース: 半導体メーカー' },
+
+  // AI(物流・製造業に限らず、AI全般の動き)
+  { url: googleNewsFeed('生成AI'), category: 'ai', label: 'Googleニュース: 生成AI' },
+  { url: googleNewsFeed('ChatGPT OR OpenAI'), category: 'ai', label: 'Googleニュース: ChatGPT/OpenAI' },
+  { url: googleNewsFeed('Claude OR Anthropic'), category: 'ai', label: 'Googleニュース: Claude/Anthropic' },
+  { url: googleNewsFeed('Gemini AI OR Google Gemini OR Google DeepMind'), category: 'ai', label: 'Googleニュース: Gemini/Google' },
+  { url: googleNewsFeed('Copilot OR Meta AI OR Grok OR xAI OR Llama'), category: 'ai', label: 'Googleニュース: Microsoft/Meta/xAI' },
+  { url: googleNewsFeed('AIエージェント OR 大規模言語モデル OR LLM'), category: 'ai', label: 'Googleニュース: AIエージェント/LLM' },
+  { url: googleNewsFeed('人工知能 OR AI規制 OR AI投資 OR AIデータセンター'), category: 'ai', label: 'Googleニュース: AI全般' },
+
   // タイ市場(APTのタイ拠点拡大に伴う情報収集)
   { url: googleNewsFeed('タイ 物流 OR タイ ロジスティクス'), category: 'thailand', label: 'Googleニュース: タイ物流' },
   { url: googleNewsFeed('タイ 進出 OR タイ 工場 OR タイ 生産拠点'), category: 'thailand', label: 'Googleニュース: タイ進出' },
@@ -57,6 +70,8 @@ const FEEDS = [
 ];
 
 const TAG_ORDER = [
+  'AI',
+  '半導体',
   '人手不足/2024年問題',
   '自動倉庫',
   'DX/スマート工場',
@@ -75,7 +90,10 @@ const TAG_ORDER = [
   '住友重機械工業',
 ];
 
+// words は含まれていれば一致。re は英字の前後に別の英字が続く一致(「MAIL」の中の「AI」など)を避けたいときに使う
 const TOPIC_TAGS = [
+  { tag: 'AI', re: /(?<![A-Za-z])(?:AI|Ai|LLM|ChatGPT|OpenAI|Claude|Anthropic|Gemini|Copilot|DeepMind|DeepSeek|Grok|xAI|Perplexity|Mistral)(?![A-Za-z])|人工知能|大規模言語モデル|アントロピック|オープンAI|ディープシーク|エージェンティック/ },
+  { tag: '半導体', re: /半導体|(?<![A-Za-z])(?:TSMC|Rapidus|DRAM|NAND|HBM|NVIDIA|Nvidia|ASML)(?![A-Za-z])|ラピダス|エヌビディア|ウエハー|ウェハー|ファウンドリ/ },
   { tag: '自動倉庫', words: ['自動倉庫', 'スタッカークレーン', '自動化倉庫'] },
   { tag: 'AMR/AGV/AGF', words: ['AMR', 'AGV', 'AGF', '自律走行搬送', '無人搬送'] },
   { tag: 'WMS/WCS/WES', words: ['WMS', 'WCS', 'WES', '倉庫管理システム'] },
@@ -106,8 +124,10 @@ function detectPaid(source, link) {
 }
 
 function inferTags(title, summary) {
-  const text = `${title} ${summary || ''}`;
-  const tags = TOPIC_TAGS.filter((t) => t.words.some((w) => text.includes(w))).map((t) => t.tag);
+  const text = toHalfWidth(`${title} ${summary || ''}`);
+  const tags = TOPIC_TAGS
+    .filter((t) => (t.re ? t.re.test(text) : t.words.some((w) => text.includes(w))))
+    .map((t) => t.tag);
   return [...new Set(tags)];
 }
 

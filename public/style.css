@@ -13,6 +13,8 @@
   --topic-bg: #FBEEC7;
   --thailand: #7A2E8C;
   --thailand-bg: #EFE0F5;
+  --ai: #0E7C66;
+  --ai-bg: #DCF1EC;
   --safety-yellow: #E3A400;
   --focus: #2F5D82;
   --paid: #8A2E2E;
@@ -243,6 +245,7 @@ a { color: inherit; }
 .card__stripe.manufacturing { background: var(--manufacturing); }
 .card__stripe.topic { background: var(--topic); }
 .card__stripe.thailand { background: var(--thailand); }
+.card__stripe.ai { background: var(--ai); }
 
 .card__body {
   padding: 14px 16px;
@@ -274,6 +277,7 @@ a { color: inherit; }
 .card__category-label.manufacturing { color: var(--manufacturing); background: var(--manufacturing-bg); }
 .card__category-label.topic { color: var(--topic); background: var(--topic-bg); }
 .card__category-label.thailand { color: var(--thailand); background: var(--thailand-bg); }
+.card__category-label.ai { color: var(--ai); background: var(--ai-bg); }
 
 .paid-badge {
   font-weight: 700;

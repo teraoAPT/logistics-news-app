@@ -35,7 +35,7 @@
 { url: googleNewsFeed('検索したいキーワード'), category: 'logistics', label: '表示用ラベル' },
 ```
 
-`category` は `logistics`(物流) / `manufacturing`(製造業) / `topic`(注目トピック) のいずれかを指定してください。
+`category` は `logistics`(物流) / `manufacturing`(製造業) / `topic`(注目トピック) / `thailand`(タイ市場) / `ai`(AI) のいずれかを指定してください。
 既存の個別サイトのRSS URLが分かれば、`url` に直接指定することもできます(例: MONOistの行を参照)。
 
 ### 関心トピックのタグ付け

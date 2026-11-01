@@ -3,6 +3,7 @@ const CATEGORY_LABEL = {
   manufacturing: '製造業',
   topic: '注目トピック',
   thailand: 'タイ市場',
+  ai: 'AI',
 };
 
 const COMPETITORS = ['ダイフク', '村田機械', 'IHI', 'トヨタL&F', '豊田自動織機', '西部電機', '住友重機械工業'];
@@ -173,6 +174,8 @@ function render() {
       if (!favorites[it.link]) return false;
     } else {
       if (activeCategory !== 'all' && it.category !== activeCategory) return false;
+      // AIの記事は数が多く物流・製造業の記事が埋もれるので、「すべて」には混ぜず AI タブで見る
+      if (activeCategory === 'all' && it.category === 'ai') return false;
       if (new Date(it.publishedAt).getTime() < since) return false;
     }
     if (activeTag && !it.tags.includes(activeTag)) return false;
